@@ -1,0 +1,54 @@
+# Carbon-Kube RL Tuner Dockerfile
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r carbon-kube && useradd -r -g carbon-kube carbon-kube
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first for better caching
+COPY scripts/requirements.txt ./
+
+# Install Python dependencies including ML libraries
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir \
+    stable-baselines3[extra] \
+    gymnasium \
+    torch \
+    tensorboard
+
+# Copy application code
+COPY scripts/rl_tuner.py ./
+COPY scripts/carbon_rl_env.py ./
+
+# Create directories for models, data, and logs
+RUN mkdir -p /app/models /app/data /app/logs /app/tensorboard && \
+    chown -R carbon-kube:carbon-kube /app
+
+# Switch to non-root user
+USER carbon-kube
+
+# Health check
+HEALTHCHECK --interval=120s --timeout=15s --start-period=60s --retries=3 \
+    CMD python -c "import os; exit(0 if os.path.exists('/app/models/latest_model.zip') else 1)" || exit 1
+
+# Expose TensorBoard port
+EXPOSE 6006
+
+# Set entrypoint
+ENTRYPOINT ["python", "rl_tuner.py"]

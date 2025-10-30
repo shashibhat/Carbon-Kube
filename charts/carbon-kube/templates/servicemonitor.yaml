@@ -1,0 +1,34 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.prometheus.serviceMonitor.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "carbon-kube.fullname" . }}
+  namespace: {{ .Values.monitoring.prometheus.serviceMonitor.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.prometheus.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "carbon-kube.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: scheduler
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.monitoring.prometheus.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.monitoring.prometheus.serviceMonitor.scrapeTimeout }}
+      path: /metrics
+      scheme: http
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'carbon_kube_.*'
+          action: keep
+        - sourceLabels: [__name__]
+          targetLabel: __name__
+          regex: 'carbon_kube_(.*)'
+          replacement: 'carbon_${1}'
+{{- end }}

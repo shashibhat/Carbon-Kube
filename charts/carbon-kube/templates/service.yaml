@@ -1,0 +1,28 @@
+{{- if .Values.scheduler.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "carbon-kube.fullname" . }}-scheduler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scheduler
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+      protocol: TCP
+      name: http
+    - port: 10251
+      targetPort: 10251
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "carbon-kube.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: scheduler
+{{- end }}

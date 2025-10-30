@@ -1,0 +1,9 @@
+# AWS CDK Dependencies
+aws-cdk-lib>=2.90.0
+constructs>=10.0.0
+boto3>=1.28.0
+aws-cdk.aws-eks>=1.204.0
+aws-cdk.aws-iam>=1.204.0
+aws-cdk.aws-s3>=1.204.0
+aws-cdk.aws-lambda>=1.204.0
+aws-cdk.custom-resources>=1.204.0
