@@ -1,0 +1,187 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dcgm-metrics-config
+  namespace: gpu-operator
+  labels:
+    app: dcgm-exporter
+    carbon-kube.io/component: gpu-telemetry
+data:
+  # DCGM metrics configuration for carbon-aware GPU scheduling
+  # This file defines which GPU metrics to collect for carbon optimization
+  dcp-metrics-included.csv: |
+    # Format: DCGM_FI_<FIELD_NAME>, <field_id>, <prometheus_metric_name>, <help_text>
+    
+    # Power and Energy Metrics (Critical for Carbon Calculations)
+    DCGM_FI_DEV_POWER_USAGE, 155, DCGM_FI_DEV_POWER_USAGE, "Power draw (in watts)"
+    DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION, 156, DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION, "Total energy consumption since boot (in mJ)"
+    DCGM_FI_DEV_POWER_MGMT_LIMIT, 158, DCGM_FI_DEV_POWER_MGMT_LIMIT, "Power management limit (in watts)"
+    DCGM_FI_DEV_POWER_MGMT_LIMIT_MIN, 159, DCGM_FI_DEV_POWER_MGMT_LIMIT_MIN, "Minimum power management limit (in watts)"
+    DCGM_FI_DEV_POWER_MGMT_LIMIT_MAX, 160, DCGM_FI_DEV_POWER_MGMT_LIMIT_MAX, "Maximum power management limit (in watts)"
+    
+    # GPU Utilization Metrics
+    DCGM_FI_DEV_GPU_UTIL, 203, DCGM_FI_DEV_GPU_UTIL, "GPU utilization (in %)"
+    DCGM_FI_DEV_MEM_COPY_UTIL, 204, DCGM_FI_DEV_MEM_COPY_UTIL, "Memory utilization (in %)"
+    DCGM_FI_DEV_ENC_UTIL, 205, DCGM_FI_DEV_ENC_UTIL, "Encoder utilization (in %)"
+    DCGM_FI_DEV_DEC_UTIL, 206, DCGM_FI_DEV_DEC_UTIL, "Decoder utilization (in %)"
+    
+    # Memory Metrics
+    DCGM_FI_DEV_FB_FREE, 232, DCGM_FI_DEV_FB_FREE, "Framebuffer memory free (in MiB)"
+    DCGM_FI_DEV_FB_USED, 233, DCGM_FI_DEV_FB_USED, "Framebuffer memory used (in MiB)"
+    DCGM_FI_DEV_FB_TOTAL, 234, DCGM_FI_DEV_FB_TOTAL, "Total framebuffer memory (in MiB)"
+    
+    # Temperature Metrics (Important for Thermal Management)
+    DCGM_FI_DEV_GPU_TEMP, 150, DCGM_FI_DEV_GPU_TEMP, "GPU temperature (in C)"
+    DCGM_FI_DEV_MEMORY_TEMP, 151, DCGM_FI_DEV_MEMORY_TEMP, "Memory temperature (in C)"
+    DCGM_FI_DEV_GPU_TEMP_MAX, 152, DCGM_FI_DEV_GPU_TEMP_MAX, "Maximum GPU temperature (in C)"
+    DCGM_FI_DEV_MEMORY_TEMP_MAX, 153, DCGM_FI_DEV_MEMORY_TEMP_MAX, "Maximum memory temperature (in C)"
+    
+    # Clock Frequencies (Performance Indicators)
+    DCGM_FI_DEV_SM_CLOCK, 139, DCGM_FI_DEV_SM_CLOCK, "SM clock frequency (in MHz)"
+    DCGM_FI_DEV_MEM_CLOCK, 140, DCGM_FI_DEV_MEM_CLOCK, "Memory clock frequency (in MHz)"
+    DCGM_FI_DEV_VIDEO_CLOCK, 141, DCGM_FI_DEV_VIDEO_CLOCK, "Video encoder/decoder clock frequency (in MHz)"
+    
+    # Performance State
+    DCGM_FI_DEV_PSTATE, 190, DCGM_FI_DEV_PSTATE, "Performance state (P-State)"
+    
+    # Throttling Reasons (Important for Performance Analysis)
+    DCGM_FI_DEV_CLOCK_THROTTLE_REASONS, 112, DCGM_FI_DEV_CLOCK_THROTTLE_REASONS, "Current clock throttle reasons (bitmask)"
+    
+    # PCIe Metrics
+    DCGM_FI_DEV_PCIE_TX_THROUGHPUT, 220, DCGM_FI_DEV_PCIE_TX_THROUGHPUT, "PCIe TX throughput (in KB/s)"
+    DCGM_FI_DEV_PCIE_RX_THROUGHPUT, 221, DCGM_FI_DEV_PCIE_RX_THROUGHPUT, "PCIe RX throughput (in KB/s)"
+    
+    # NVLink Metrics (for multi-GPU systems)
+    DCGM_FI_DEV_NVLINK_BANDWIDTH_TOTAL, 225, DCGM_FI_DEV_NVLINK_BANDWIDTH_TOTAL, "Total NVLink bandwidth (in KB/s)"
+    
+    # XID Errors (Hardware Errors)
+    DCGM_FI_DEV_XID_ERRORS, 230, DCGM_FI_DEV_XID_ERRORS, "XID errors count"
+    
+    # Compute Process Information
+    DCGM_FI_DEV_COMPUTE_PIDS, 240, DCGM_FI_DEV_COMPUTE_PIDS, "Compute processes running on GPU"
+    
+    # MIG (Multi-Instance GPU) Metrics
+    DCGM_FI_DEV_MIG_MODE, 250, DCGM_FI_DEV_MIG_MODE, "MIG mode enabled (0=disabled, 1=enabled)"
+    
+    # Virtualization Metrics
+    DCGM_FI_DEV_VGPU_LICENSE_STATUS, 260, DCGM_FI_DEV_VGPU_LICENSE_STATUS, "vGPU license status"
+    
+    # Additional Power Metrics for Carbon Calculations
+    DCGM_FI_DEV_POWER_VIOLATION, 161, DCGM_FI_DEV_POWER_VIOLATION, "Power violation time (in us)"
+    DCGM_FI_DEV_THERMAL_VIOLATION, 162, DCGM_FI_DEV_THERMAL_VIOLATION, "Thermal violation time (in us)"
+    
+    # GPU Topology Information
+    DCGM_FI_DEV_CUDA_COMPUTE_CAPABILITY, 270, DCGM_FI_DEV_CUDA_COMPUTE_CAPABILITY, "CUDA compute capability"
+    
+  # Additional configuration for carbon-aware metrics
+  carbon-metrics.yaml: |
+    # Carbon-specific metric calculations and formulas
+    carbon_formulas:
+      # Base carbon intensity calculation
+      gpu_carbon_rate_gco2_per_hour: |
+        DCGM_FI_DEV_POWER_USAGE * carbon_intensity_gco2_per_kwh / 1000
+      
+      # Efficiency metrics
+      gpu_performance_per_watt: |
+        DCGM_FI_DEV_GPU_UTIL / DCGM_FI_DEV_POWER_USAGE
+      
+      # Thermal efficiency
+      gpu_thermal_efficiency: |
+        DCGM_FI_DEV_GPU_UTIL / (DCGM_FI_DEV_GPU_TEMP - 25)
+      
+      # Memory efficiency
+      gpu_memory_efficiency: |
+        DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_TOTAL
+    
+    # Thresholds for carbon-aware decisions
+    thresholds:
+      power_efficiency_min: 0.5  # Minimum GPU util per watt
+      temperature_max: 85        # Maximum safe temperature (°C)
+      memory_utilization_max: 90 # Maximum memory utilization (%)
+      carbon_intensity_high: 500 # High carbon intensity threshold (gCO2/kWh)
+    
+    # Workload profiles for different GPU applications
+    workload_profiles:
+      ml_training:
+        expected_gpu_util: 85-95
+        expected_memory_util: 80-95
+        expected_power_ratio: 0.8-0.9
+      ml_inference:
+        expected_gpu_util: 60-80
+        expected_memory_util: 50-70
+        expected_power_ratio: 0.6-0.7
+      batch_processing:
+        expected_gpu_util: 70-90
+        expected_memory_util: 60-80
+        expected_power_ratio: 0.7-0.8
+      interactive:
+        expected_gpu_util: 30-60
+        expected_memory_util: 30-50
+        expected_power_ratio: 0.4-0.6
+  
+  # Prometheus recording rules for carbon metrics
+  recording-rules.yaml: |
+    groups:
+    - name: carbon_gpu_metrics
+      interval: 30s
+      rules:
+      # GPU Carbon Rate (gCO2/hour)
+      - record: gpu:carbon_rate_gco2_per_hour
+        expr: |
+          DCGM_FI_DEV_POWER_USAGE * on(instance) group_left(zone) 
+          (gpu_carbon_intensity_gco2_per_kwh / 1000)
+      
+      # GPU Efficiency Score (0-100)
+      - record: gpu:efficiency_score
+        expr: |
+          (
+            (DCGM_FI_DEV_GPU_UTIL / 100) * 0.4 +
+            (DCGM_FI_DEV_MEM_COPY_UTIL / 100) * 0.3 +
+            ((400 - DCGM_FI_DEV_POWER_USAGE) / 400) * 0.3
+          ) * 100
+      
+      # GPU Carbon Efficiency (GPU Util per gCO2/hour)
+      - record: gpu:carbon_efficiency
+        expr: |
+          DCGM_FI_DEV_GPU_UTIL / gpu:carbon_rate_gco2_per_hour
+      
+      # GPU Thermal Efficiency
+      - record: gpu:thermal_efficiency
+        expr: |
+          DCGM_FI_DEV_GPU_UTIL / (DCGM_FI_DEV_GPU_TEMP - 25)
+      
+      # GPU Power Efficiency (Util per Watt)
+      - record: gpu:power_efficiency
+        expr: |
+          DCGM_FI_DEV_GPU_UTIL / DCGM_FI_DEV_POWER_USAGE
+      
+      # GPU Memory Efficiency
+      - record: gpu:memory_efficiency
+        expr: |
+          DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_TOTAL * 100
+      
+      # Aggregated metrics by zone
+      - record: zone:gpu_carbon_rate_gco2_per_hour:sum
+        expr: |
+          sum by (zone) (gpu:carbon_rate_gco2_per_hour)
+      
+      - record: zone:gpu_power_usage:sum
+        expr: |
+          sum by (zone) (DCGM_FI_DEV_POWER_USAGE)
+      
+      - record: zone:gpu_utilization:avg
+        expr: |
+          avg by (zone) (DCGM_FI_DEV_GPU_UTIL)
+      
+      # Cluster-wide aggregations
+      - record: cluster:gpu_carbon_rate_gco2_per_hour:sum
+        expr: |
+          sum(gpu:carbon_rate_gco2_per_hour)
+      
+      - record: cluster:gpu_power_usage:sum
+        expr: |
+          sum(DCGM_FI_DEV_POWER_USAGE)
+      
+      - record: cluster:gpu_efficiency_score:avg
+        expr: |
+          avg(gpu:efficiency_score)

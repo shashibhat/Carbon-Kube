@@ -1,0 +1,248 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mig-manager-config
+  namespace: gpu-operator
+  labels:
+    app: nvidia-mig-manager
+    carbon-kube.io/component: gpu-mig
+data:
+  # MIG (Multi-Instance GPU) configuration for carbon-aware GPU partitioning
+  # This configuration enables fractional GPU scheduling for better resource utilization
+  
+  config.yaml: |
+    version: v1
+    mig-configs:
+      # A100-40GB MIG Configurations (Carbon-Optimized)
+      all-1g.10gb:
+        - devices: [0,1,2,3,4,5,6,7]
+          mig-enabled: true
+          mig-devices:
+            "1g.10gb": 7  # 7x 1g.10gb instances per GPU
+      
+      all-2g.20gb:
+        - devices: [0,1,2,3,4,5,6,7]
+          mig-enabled: true
+          mig-devices:
+            "2g.20gb": 3  # 3x 2g.20gb instances per GPU
+      
+      all-3g.40gb:
+        - devices: [0,1,2,3,4,5,6,7]
+          mig-enabled: true
+          mig-devices:
+            "3g.40gb": 2  # 2x 3g.40gb instances per GPU
+      
+      all-7g.80gb:
+        - devices: [0,1,2,3,4,5,6,7]
+          mig-enabled: true
+          mig-devices:
+            "7g.80gb": 1  # 1x 7g.80gb instance per GPU (full GPU)
+      
+      # Mixed configurations for workload diversity
+      mixed-small-medium:
+        - devices: [0,1,2,3]
+          mig-enabled: true
+          mig-devices:
+            "1g.10gb": 4  # Small inference workloads
+            "2g.20gb": 1  # Medium training workloads
+        - devices: [4,5,6,7]
+          mig-enabled: true
+          mig-devices:
+            "3g.40gb": 1  # Large training workloads
+            "1g.10gb": 3  # Additional small workloads
+      
+      # Carbon-optimized configuration for batch processing
+      carbon-batch:
+        - devices: [0,1,2,3,4,5,6,7]
+          mig-enabled: true
+          mig-devices:
+            "2g.20gb": 3  # Optimal for batch ML workloads
+      
+      # High-density inference configuration
+      inference-dense:
+        - devices: [0,1,2,3,4,5,6,7]
+          mig-enabled: true
+          mig-devices:
+            "1g.10gb": 7  # Maximum density for inference
+      
+      # Training-optimized configuration
+      training-optimized:
+        - devices: [0,1,2,3]
+          mig-enabled: true
+          mig-devices:
+            "3g.40gb": 2  # Large model training
+        - devices: [4,5,6,7]
+          mig-enabled: true
+          mig-devices:
+            "2g.20gb": 3  # Medium model training
+      
+      # Disabled MIG for full GPU access
+      all-disabled:
+        - devices: [0,1,2,3,4,5,6,7]
+          mig-enabled: false
+    
+    # Carbon-aware MIG selection rules
+    selection-policy:
+      # Default policy based on carbon intensity and workload type
+      default: |
+        if carbon_intensity > 500:
+          # High carbon intensity: maximize efficiency with smaller instances
+          if workload_type == "inference":
+            return "inference-dense"
+          elif workload_type == "batch":
+            return "carbon-batch"
+          else:
+            return "mixed-small-medium"
+        elif carbon_intensity > 300:
+          # Medium carbon intensity: balanced approach
+          if workload_type == "training":
+            return "training-optimized"
+          else:
+            return "mixed-small-medium"
+        else:
+          # Low carbon intensity: allow larger instances
+          if workload_type == "training" and model_size == "large":
+            return "all-7g.80gb"
+          elif workload_type == "training":
+            return "training-optimized"
+          else:
+            return "all-2g.20gb"
+      
+      # Time-based policy for predictable workloads
+      time-based: |
+        hour = current_hour()
+        if 9 <= hour <= 17:  # Business hours
+          # Prioritize interactive and inference workloads
+          return "inference-dense"
+        elif 18 <= hour <= 23:  # Evening batch processing
+          return "carbon-batch"
+        else:  # Night time training
+          return "training-optimized"
+      
+      # SLA-aware policy
+      sla-aware: |
+        if sla_critical:
+          # Critical workloads get dedicated resources
+          if gpu_memory_required > 30:
+            return "all-7g.80gb"
+          elif gpu_memory_required > 15:
+            return "all-3g.40gb"
+          else:
+            return "all-2g.20gb"
+        else:
+          # Non-critical workloads share resources
+          return "mixed-small-medium"
+  
+  # MIG device plugin configuration
+  device-plugin-config.yaml: |
+    version: v1
+    flags:
+      migStrategy: "mixed"  # Allow mixed MIG configurations
+      failOnInitError: false
+      nvidiaDriverRoot: "/run/nvidia/driver"
+      plugin:
+        passDeviceSpecs: false
+        deviceListStrategy: "envvar"
+        deviceIDStrategy: "uuid"
+    
+    # Resource naming for different MIG profiles
+    resources:
+      "nvidia.com/mig-1g.10gb": 1
+      "nvidia.com/mig-2g.20gb": 1
+      "nvidia.com/mig-3g.40gb": 1
+      "nvidia.com/mig-7g.80gb": 1
+    
+    # Carbon-aware resource allocation
+    carbon-allocation:
+      # Prefer smaller instances during high carbon intensity
+      high-carbon-preference:
+        - "nvidia.com/mig-1g.10gb"
+        - "nvidia.com/mig-2g.20gb"
+        - "nvidia.com/mig-3g.40gb"
+        - "nvidia.com/mig-7g.80gb"
+      
+      # Balanced allocation during medium carbon intensity
+      medium-carbon-preference:
+        - "nvidia.com/mig-2g.20gb"
+        - "nvidia.com/mig-3g.40gb"
+        - "nvidia.com/mig-1g.10gb"
+        - "nvidia.com/mig-7g.80gb"
+      
+      # Allow larger instances during low carbon intensity
+      low-carbon-preference:
+        - "nvidia.com/mig-7g.80gb"
+        - "nvidia.com/mig-3g.40gb"
+        - "nvidia.com/mig-2g.20gb"
+        - "nvidia.com/mig-1g.10gb"
+  
+  # Hooks for carbon-aware MIG management
+  hooks.yaml: |
+    version: v1
+    hooks:
+      # Pre-allocation hook to check carbon intensity
+      pre-allocation:
+        - name: carbon-intensity-check
+          command: |
+            #!/bin/bash
+            CARBON_INTENSITY=$(kubectl get configmap carbon-scores -o jsonpath='{.data.zones}' | jq -r '.["'$NODE_ZONE'"].intensity')
+            if [ "$CARBON_INTENSITY" -gt 500 ]; then
+              echo "high-carbon"
+            elif [ "$CARBON_INTENSITY" -gt 300 ]; then
+              echo "medium-carbon"
+            else
+              echo "low-carbon"
+            fi
+          timeout: 30s
+      
+      # Post-allocation hook to update metrics
+      post-allocation:
+        - name: update-carbon-metrics
+          command: |
+            #!/bin/bash
+            # Update Prometheus metrics with MIG allocation
+            curl -X POST http://prometheus-pushgateway:9091/metrics/job/mig-manager/instance/$HOSTNAME \
+              --data-binary @- <<EOF
+            mig_instances_allocated{profile="$MIG_PROFILE",carbon_level="$CARBON_LEVEL"} $MIG_COUNT
+            EOF
+          timeout: 10s
+      
+      # Reconfiguration hook for dynamic MIG changes
+      reconfigure:
+        - name: carbon-aware-reconfigure
+          command: |
+            #!/bin/bash
+            # Check if reconfiguration is needed based on carbon forecast
+            FORECAST=$(kubectl get configmap carbon-scores -o jsonpath='{.data.zones}' | jq -r '.["'$NODE_ZONE'"].forecast[0]')
+            CURRENT=$(kubectl get configmap carbon-scores -o jsonpath='{.data.zones}' | jq -r '.["'$NODE_ZONE'"].intensity')
+            
+            # If forecast shows significant change (>20%), trigger reconfiguration
+            CHANGE=$(echo "scale=2; ($FORECAST - $CURRENT) / $CURRENT * 100" | bc)
+            if [ "${CHANGE#-}" -gt 20 ]; then
+              echo "reconfigure-needed"
+              exit 0
+            else
+              echo "no-reconfigure"
+              exit 1
+            fi
+          timeout: 60s
+          interval: 300s  # Check every 5 minutes
+  
+  # Node labeling for MIG-enabled nodes
+  node-labels.yaml: |
+    # Labels to apply to MIG-enabled nodes
+    labels:
+      nvidia.com/mig.capable: "true"
+      carbon-kube.io/mig-enabled: "true"
+      carbon-kube.io/gpu-partitioning: "supported"
+    
+    # Taints for MIG nodes (optional)
+    taints:
+      - key: nvidia.com/mig
+        value: "true"
+        effect: NoSchedule
+    
+    # Annotations for carbon-aware scheduling
+    annotations:
+      carbon-kube.io/mig-profiles: "1g.10gb,2g.20gb,3g.40gb,7g.80gb"
+      carbon-kube.io/default-mig-config: "mixed-small-medium"
+      carbon-kube.io/carbon-aware-mig: "enabled"
