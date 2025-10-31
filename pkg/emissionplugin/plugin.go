@@ -8,8 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -23,6 +25,8 @@ const (
 	ConfigMapNamespace   = "default"
 	ZoneLabel           = "topology.kubernetes.io/zone"
 	DefaultIntensity    = 200.0 // Default carbon intensity in gCO2/kWh
+	CacheTTL            = 5 * time.Minute // Redis cache TTL
+	RedisKeyPrefix      = "carbon-kube:"
 )
 
 // ZonalIntensity represents carbon intensity data for a zone
@@ -43,8 +47,10 @@ type EmissionScore struct {
 
 // EmissionPlugin implements the Katalyst scheduler plugin interface
 type EmissionPlugin struct {
-	kubeClient kubernetes.Interface
-	metrics    *Metrics
+	kubeClient  kubernetes.Interface
+	redisClient *redis.Client
+	logger      *zap.Logger
+	metrics     *Metrics
 }
 
 // Metrics holds Prometheus metrics for the plugin
@@ -65,6 +71,27 @@ func NewEmissionPlugin() (*EmissionPlugin, error) {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kubernetes client: %v", err)
+	}
+
+	// Initialize structured logger
+	logger, err := zap.NewProduction()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logger: %v", err)
+	}
+
+	// Initialize Redis client for caching
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     "redis-service:6379", // Kubernetes service name
+		Password: "",                   // No password by default
+		DB:       0,                    // Default DB
+	})
+
+	// Test Redis connection
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		logger.Warn("Redis connection failed, falling back to ConfigMap only", zap.Error(err))
+		redisClient = nil // Disable Redis if connection fails
 	}
 
 	metrics := &Metrics{
@@ -97,8 +124,10 @@ func NewEmissionPlugin() (*EmissionPlugin, error) {
 	}
 
 	return &EmissionPlugin{
-		kubeClient: kubeClient,
-		metrics:    metrics,
+		kubeClient:  kubeClient,
+		redisClient: redisClient,
+		logger:      logger,
+		metrics:     metrics,
 	}, nil
 }
 
@@ -109,14 +138,19 @@ func (p *EmissionPlugin) Name() string {
 
 // Execute implements the main plugin logic for scoring nodes based on carbon emissions
 func (p *EmissionPlugin) Execute(ctx context.Context, pod *v1.Pod, nodes []*v1.Node) (map[string]float64, bool) {
-	klog.V(4).InfoS("EmissionPlugin executing", "pod", pod.Name, "nodeCount", len(nodes))
+	p.logger.Info("EmissionPlugin executing",
+		zap.String("pod", pod.Name),
+		zap.String("namespace", pod.Namespace),
+		zap.Int("nodeCount", len(nodes)))
 
 	scores := make(map[string]float64)
 	
-	// Get carbon intensity data from ConfigMap
+	// Get carbon intensity data from cache or ConfigMap
 	intensityMap, err := p.getCarbonIntensityData(ctx)
 	if err != nil {
-		klog.ErrorS(err, "Failed to get carbon intensity data, using default scores")
+		p.logger.Error("Failed to get carbon intensity data, using default scores",
+			zap.Error(err),
+			zap.String("pod", pod.Name))
 		// Fallback: assign zero scores (no preference)
 		for _, node := range nodes {
 			scores[node.Name] = 0.0
@@ -126,6 +160,11 @@ func (p *EmissionPlugin) Execute(ctx context.Context, pod *v1.Pod, nodes []*v1.N
 
 	// Calculate pod resource requirements
 	podRequests := p.getPodResourceRequests(pod)
+	
+	p.logger.Debug("Pod resource requirements calculated",
+		zap.String("pod", pod.Name),
+		zap.Int64("cpuMillicores", podRequests.CPU),
+		zap.Int64("memoryBytes", podRequests.Memory))
 	
 	// Score each node based on carbon intensity and resource requirements
 	for _, node := range nodes {
@@ -143,20 +182,43 @@ func (p *EmissionPlugin) Execute(ctx context.Context, pod *v1.Pod, nodes []*v1.N
 		p.metrics.carbonIntensity.WithLabelValues(zone).Set(intensity)
 		p.metrics.emissionScores.WithLabelValues(node.Name, zone).Set(emissionScore)
 		
-		klog.V(5).InfoS("Calculated emission score", 
-			"node", node.Name, 
-			"zone", zone, 
-			"intensity", intensity, 
-			"cpuKW", cpuKW, 
-			"score", emissionScore)
+		p.logger.Debug("Calculated emission score",
+			zap.String("node", node.Name),
+			zap.String("zone", zone),
+			zap.Float64("intensity", intensity),
+			zap.Float64("cpuKW", cpuKW),
+			zap.Float64("score", emissionScore))
 	}
 
-	klog.V(4).InfoS("EmissionPlugin completed", "scoresCalculated", len(scores))
+	p.logger.Info("EmissionPlugin completed",
+		zap.String("pod", pod.Name),
+		zap.Int("scoresCalculated", len(scores)))
 	return scores, true
 }
 
-// getCarbonIntensityData retrieves carbon intensity data from the ConfigMap
+// getCarbonIntensityData retrieves carbon intensity data from Redis cache or ConfigMap
 func (p *EmissionPlugin) getCarbonIntensityData(ctx context.Context) (map[string]ZonalIntensity, error) {
+	cacheKey := RedisKeyPrefix + "intensity_data"
+	
+	// Try Redis cache first if available
+	if p.redisClient != nil {
+		cachedData, err := p.redisClient.Get(ctx, cacheKey).Result()
+		if err == nil {
+			var intensityMap map[string]ZonalIntensity
+			if err := json.Unmarshal([]byte(cachedData), &intensityMap); err == nil {
+				p.logger.Debug("Retrieved carbon intensity data from Redis cache",
+					zap.String("cacheKey", cacheKey),
+					zap.Int("zones", len(intensityMap)))
+				return intensityMap, nil
+			}
+			p.logger.Warn("Failed to unmarshal cached data", zap.Error(err))
+		} else if err != redis.Nil {
+			p.logger.Warn("Redis cache read failed", zap.Error(err))
+		}
+	}
+
+	// Fallback to ConfigMap
+	p.logger.Debug("Fetching carbon intensity data from ConfigMap")
 	configMap, err := p.kubeClient.CoreV1().ConfigMaps(ConfigMapNamespace).Get(
 		ctx, ConfigMapName, metav1.GetOptions{})
 	if err != nil {
@@ -171,6 +233,20 @@ func (p *EmissionPlugin) getCarbonIntensityData(ctx context.Context) (map[string
 	var intensityMap map[string]ZonalIntensity
 	if err := json.Unmarshal([]byte(zonesData), &intensityMap); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal zones data: %v", err)
+	}
+
+	// Cache the data in Redis if available
+	if p.redisClient != nil {
+		if cacheData, err := json.Marshal(intensityMap); err == nil {
+			if err := p.redisClient.Set(ctx, cacheKey, cacheData, CacheTTL).Err(); err != nil {
+				p.logger.Warn("Failed to cache intensity data in Redis", zap.Error(err))
+			} else {
+				p.logger.Debug("Cached carbon intensity data in Redis",
+					zap.String("cacheKey", cacheKey),
+					zap.Duration("ttl", CacheTTL),
+					zap.Int("zones", len(intensityMap)))
+			}
+		}
 	}
 
 	return intensityMap, nil

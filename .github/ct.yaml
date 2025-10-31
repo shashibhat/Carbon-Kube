@@ -1,0 +1,51 @@
+# Chart Testing Configuration for Carbon-Kube
+# Used by the chart-testing tool in CI/CD pipeline
+
+# Directories containing charts to test
+chart-dirs:
+  - charts
+
+# Directories containing chart repositories
+chart-repos:
+  - bitnami=https://charts.bitnami.com/bitnami
+  - prometheus-community=https://prometheus-community.github.io/helm-charts
+  - grafana=https://grafana.github.io/helm-charts
+
+# Target branch for comparison
+target-branch: main
+
+# Helm version to use
+helm-version: v3.12.0
+
+# Validate maintainers in Chart.yaml
+validate-maintainers: true
+
+# Check version increment
+check-version-increment: true
+
+# Validate chart schema
+validate-chart-schema: true
+
+# Validate YAML files
+validate-yaml: true
+
+# Additional Helm lint settings
+helm-extra-args: --strict
+
+# Test configuration
+test-config:
+  # Timeout for chart installation
+  timeout: 600s
+  
+  # Namespace prefix for test installations
+  namespace-prefix: ct-test
+  
+  # Cleanup after tests
+  cleanup: true
+
+# Excluded charts (if any)
+excluded-charts: []
+
+# Additional values files for testing
+additional-commands:
+  - helm dependency update charts/carbon-kube/

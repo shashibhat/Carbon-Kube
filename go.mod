@@ -11,6 +11,8 @@ require (
 	github.com/kubewharf/katalyst-core v0.7.0
 	github.com/prometheus/client_golang v1.16.0
 	github.com/stretchr/testify v1.8.4
+	github.com/go-redis/redis/v8 v8.11.5
+	go.uber.org/zap v1.25.0
 )
 
 require (

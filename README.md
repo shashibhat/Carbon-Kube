@@ -1,9 +1,16 @@
 # Carbon-Kube: Carbon-Aware Scheduling for Greener Big Data Pipelines
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![CI/CD](https://github.com/carbon-kube/carbon-kube/workflows/Carbon-Kube%20CI%2FCD%20Pipeline/badge.svg)](https://github.com/carbon-kube/carbon-kube/actions)
+[![codecov](https://codecov.io/gh/carbon-kube/carbon-kube/branch/main/graph/badge.svg)](https://codecov.io/gh/carbon-kube/carbon-kube)
+[![Go Report Card](https://goreportcard.com/badge/github.com/carbon-kube/carbon-kube)](https://goreportcard.com/report/github.com/carbon-kube/carbon-kube)
 [![Python CDK](https://img.shields.io/badge/AWS%20CDK-Python-orange)](https://aws.amazon.com/cdk/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.28%2B-blue)](https://kubernetes.io/)
 [![Go](https://img.shields.io/badge/Go-1.21%2B-green)](https://go.dev/)
+[![Katalyst](https://img.shields.io/badge/Katalyst-v0.7.0%2B-purple)](https://github.com/kubewharf/katalyst-core)
+[![Helm](https://img.shields.io/badge/Helm-v3.12%2B-blue)](https://helm.sh/)
+[![Security](https://img.shields.io/badge/Security-Trivy%20%26%20Gosec-red)](https://github.com/carbon-kube/carbon-kube/security)
+[![Documentation](https://img.shields.io/badge/Docs-Available-brightgreen)](https://carbon-kube.github.io/docs/)
 
 ## Overview
 
