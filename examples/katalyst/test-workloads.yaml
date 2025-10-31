@@ -1,0 +1,375 @@
+---
+# Green Guaranteed Workload - Critical production service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: green-guaranteed-app
+  namespace: production
+  labels:
+    app: green-guaranteed-app
+    carbon.katalyst.io/qos-profile: "green-guaranteed"
+    carbon.katalyst.io/priority: "high"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: green-guaranteed-app
+  template:
+    metadata:
+      labels:
+        app: green-guaranteed-app
+        carbon.katalyst.io/qos-profile: "green-guaranteed"
+      annotations:
+        carbon.katalyst.io/carbon-budget: "10.0"  # gCO2 per hour
+        carbon.katalyst.io/energy-efficiency: "high"
+        carbon.katalyst.io/topology-aware: "true"
+    spec:
+      schedulerName: carbon-katalyst-scheduler
+      nodeSelector:
+        carbon.katalyst.io/energy-source: "renewable"
+      containers:
+      - name: app
+        image: nginx:1.21
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        env:
+        - name: CARBON_AWARE
+          value: "true"
+        - name: QOS_PROFILE
+          value: "green-guaranteed"
+
+---
+# Mixed Burstable Workload - Web application with variable load
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mixed-burstable-app
+  namespace: production
+  labels:
+    app: mixed-burstable-app
+    carbon.katalyst.io/qos-profile: "mixed-burstable"
+    carbon.katalyst.io/priority: "medium"
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: mixed-burstable-app
+  template:
+    metadata:
+      labels:
+        app: mixed-burstable-app
+        carbon.katalyst.io/qos-profile: "mixed-burstable"
+      annotations:
+        carbon.katalyst.io/carbon-budget: "15.0"  # gCO2 per hour
+        carbon.katalyst.io/energy-efficiency: "medium"
+        carbon.katalyst.io/topology-aware: "false"
+    spec:
+      schedulerName: carbon-katalyst-scheduler
+      containers:
+      - name: app
+        image: httpd:2.4
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "800m"
+            memory: "512Mi"
+        env:
+        - name: CARBON_AWARE
+          value: "true"
+        - name: QOS_PROFILE
+          value: "mixed-burstable"
+
+---
+# Dirty Best Effort Workload - Background processing
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dirty-besteffort-app
+  namespace: batch-processing
+  labels:
+    app: dirty-besteffort-app
+    carbon.katalyst.io/qos-profile: "dirty-besteffort"
+    carbon.katalyst.io/priority: "low"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dirty-besteffort-app
+  template:
+    metadata:
+      labels:
+        app: dirty-besteffort-app
+        carbon.katalyst.io/qos-profile: "dirty-besteffort"
+      annotations:
+        carbon.katalyst.io/carbon-budget: "25.0"  # gCO2 per hour
+        carbon.katalyst.io/energy-efficiency: "low"
+        carbon.katalyst.io/topology-aware: "false"
+        carbon.katalyst.io/migration-allowed: "true"
+    spec:
+      schedulerName: carbon-katalyst-scheduler
+      containers:
+      - name: app
+        image: busybox:1.35
+        command: ["sh", "-c", "while true; do echo 'Processing batch job...'; sleep 30; done"]
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+        env:
+        - name: CARBON_AWARE
+          value: "true"
+        - name: QOS_PROFILE
+          value: "dirty-besteffort"
+
+---
+# AI/ML Optimized Workload - GPU-intensive training job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: aiml-training-job
+  namespace: ai-ml
+  labels:
+    app: aiml-training-job
+    carbon.katalyst.io/qos-profile: "ai-ml-optimized"
+    carbon.katalyst.io/priority: "high"
+    carbon.katalyst.io/workload-type: "gpu-intensive"
+spec:
+  template:
+    metadata:
+      labels:
+        app: aiml-training-job
+        carbon.katalyst.io/qos-profile: "ai-ml-optimized"
+      annotations:
+        carbon.katalyst.io/carbon-budget: "100.0"  # gCO2 per hour
+        carbon.katalyst.io/energy-efficiency: "high"
+        carbon.katalyst.io/topology-aware: "true"
+        carbon.katalyst.io/gpu-required: "true"
+    spec:
+      schedulerName: carbon-katalyst-scheduler
+      restartPolicy: Never
+      nodeSelector:
+        carbon.katalyst.io/gpu-available: "true"
+        carbon.katalyst.io/energy-source: "renewable"
+      containers:
+      - name: trainer
+        image: tensorflow/tensorflow:2.12.0-gpu
+        command: ["python", "-c", "import tensorflow as tf; print('GPU Available:', tf.config.list_physical_devices('GPU')); import time; time.sleep(3600)"]
+        resources:
+          requests:
+            cpu: "2000m"
+            memory: "4Gi"
+            nvidia.com/gpu: 1
+          limits:
+            cpu: "4000m"
+            memory: "8Gi"
+            nvidia.com/gpu: 1
+        env:
+        - name: CARBON_AWARE
+          value: "true"
+        - name: QOS_PROFILE
+          value: "ai-ml-optimized"
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+
+---
+# Batch Flexible Workload - Data processing pipeline
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: batch-flexible-cronjob
+  namespace: batch-processing
+  labels:
+    app: batch-flexible-cronjob
+    carbon.katalyst.io/qos-profile: "batch-flexible"
+    carbon.katalyst.io/priority: "low"
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: batch-flexible-cronjob
+            carbon.katalyst.io/qos-profile: "batch-flexible"
+          annotations:
+            carbon.katalyst.io/carbon-budget: "20.0"  # gCO2 per hour
+            carbon.katalyst.io/energy-efficiency: "medium"
+            carbon.katalyst.io/topology-aware: "false"
+            carbon.katalyst.io/migration-allowed: "true"
+            carbon.katalyst.io/schedule-flexible: "true"
+        spec:
+          schedulerName: carbon-katalyst-scheduler
+          restartPolicy: OnFailure
+          containers:
+          - name: processor
+            image: python:3.9-slim
+            command: ["python", "-c", "import time; print('Processing data...'); time.sleep(1800); print('Data processing complete')"]
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "1Gi"
+              limits:
+                cpu: "1000m"
+                memory: "2Gi"
+            env:
+            - name: CARBON_AWARE
+              value: "true"
+            - name: QOS_PROFILE
+              value: "batch-flexible"
+            - name: PROCESSING_MODE
+              value: "carbon-optimized"
+
+---
+# Development Environment Workload
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dev-environment
+  namespace: development
+  labels:
+    app: dev-environment
+    carbon.katalyst.io/qos-profile: "mixed-burstable"
+    carbon.katalyst.io/priority: "low"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dev-environment
+  template:
+    metadata:
+      labels:
+        app: dev-environment
+        carbon.katalyst.io/qos-profile: "mixed-burstable"
+      annotations:
+        carbon.katalyst.io/carbon-budget: "5.0"  # gCO2 per hour
+        carbon.katalyst.io/energy-efficiency: "medium"
+        carbon.katalyst.io/topology-aware: "false"
+        carbon.katalyst.io/migration-allowed: "true"
+    spec:
+      schedulerName: carbon-katalyst-scheduler
+      containers:
+      - name: dev-app
+        image: node:18-alpine
+        command: ["sh", "-c", "npm init -y && npm install express && node -e 'const express = require(\"express\"); const app = express(); app.get(\"/\", (req, res) => res.send(\"Dev Environment\")); app.listen(3000, () => console.log(\"Server running on port 3000\"));'"]
+        ports:
+        - containerPort: 3000
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        env:
+        - name: NODE_ENV
+          value: "development"
+        - name: CARBON_AWARE
+          value: "true"
+        - name: QOS_PROFILE
+          value: "mixed-burstable"
+
+---
+# Edge Computing Workload
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: edge-sensor-collector
+  namespace: edge-computing
+  labels:
+    app: edge-sensor-collector
+    carbon.katalyst.io/qos-profile: "green-guaranteed"
+    carbon.katalyst.io/priority: "medium"
+spec:
+  selector:
+    matchLabels:
+      app: edge-sensor-collector
+  template:
+    metadata:
+      labels:
+        app: edge-sensor-collector
+        carbon.katalyst.io/qos-profile: "green-guaranteed"
+      annotations:
+        carbon.katalyst.io/carbon-budget: "2.0"  # gCO2 per hour
+        carbon.katalyst.io/energy-efficiency: "high"
+        carbon.katalyst.io/topology-aware: "true"
+        carbon.katalyst.io/edge-optimized: "true"
+    spec:
+      schedulerName: carbon-katalyst-scheduler
+      nodeSelector:
+        carbon.katalyst.io/node-type: "edge"
+      containers:
+      - name: sensor-collector
+        image: alpine:3.18
+        command: ["sh", "-c", "while true; do echo 'Collecting sensor data...'; sleep 60; done"]
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+        env:
+        - name: CARBON_AWARE
+          value: "true"
+        - name: QOS_PROFILE
+          value: "green-guaranteed"
+        - name: EDGE_MODE
+          value: "true"
+
+---
+# Service for Green Guaranteed App
+apiVersion: v1
+kind: Service
+metadata:
+  name: green-guaranteed-service
+  namespace: production
+  labels:
+    app: green-guaranteed-app
+spec:
+  selector:
+    app: green-guaranteed-app
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+
+---
+# Service for Mixed Burstable App
+apiVersion: v1
+kind: Service
+metadata:
+  name: mixed-burstable-service
+  namespace: production
+  labels:
+    app: mixed-burstable-app
+spec:
+  selector:
+    app: mixed-burstable-app
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+
+---
+# Service for Development Environment
+apiVersion: v1
+kind: Service
+metadata:
+  name: dev-environment-service
+  namespace: development
+  labels:
+    app: dev-environment
+spec:
+  selector:
+    app: dev-environment
+  ports:
+  - port: 3000
+    targetPort: 3000
+  type: NodePort

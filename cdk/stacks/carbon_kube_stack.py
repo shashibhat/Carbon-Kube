@@ -50,10 +50,13 @@ class CarbonKubeStack(Stack):
         # Create IAM roles and policies
         self._create_iam_resources()
         
-        # Create S3 bucket for logs and metrics
-        self.metrics_bucket = self._create_s3_bucket()
+        # Create S3 bucket for carbon data
+        self.carbon_bucket = self._create_s3_bucket()
         
-        # Install Carbon-Kube via Helm
+        # Install Katalyst-core
+        self._install_katalyst_core()
+        
+        # Install Carbon-Kube with Katalyst integration
         self._install_carbon_kube()
         
         # Create monitoring resources
@@ -212,7 +215,7 @@ class CarbonKubeStack(Stack):
                         "s3:DeleteObject"
                     ],
                     resources=[
-                        f"{self.metrics_bucket.bucket_arn}/*"
+                        f"{self.carbon_bucket.bucket_arn}/*"
                     ]
                 ),
                 iam.PolicyStatement(
@@ -253,6 +256,56 @@ class CarbonKubeStack(Stack):
                 document=carbon_api_policy
             )
         )
+        
+        # Create IAM role for Katalyst components
+        katalyst_policy = iam.PolicyDocument(
+            statements=[
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "ec2:DescribeInstances",
+                        "ec2:DescribeInstanceTypes",
+                        "ec2:DescribeRegions",
+                        "ec2:DescribeAvailabilityZones"
+                    ],
+                    resources=["*"]
+                ),
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "cloudwatch:PutMetricData",
+                        "cloudwatch:GetMetricStatistics",
+                        "cloudwatch:ListMetrics"
+                    ],
+                    resources=["*"]
+                ),
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "s3:DeleteObject"
+                    ],
+                    resources=[
+                        f"{self.carbon_bucket.bucket_arn}/*"
+                    ]
+                )
+            ]
+        )
+        
+        # Service account for Katalyst
+        self.katalyst_role = self.cluster.add_service_account(
+            "KatalystServiceAccount",
+            name="katalyst-core",
+            namespace="katalyst-system"
+        )
+        
+        self.katalyst_role.role.attach_inline_policy(
+            iam.Policy(
+                self, "KatalystPolicy",
+                document=katalyst_policy
+            )
+        )
     
     def _create_s3_bucket(self) -> s3.Bucket:
         """Create S3 bucket for storing metrics and logs."""
@@ -273,6 +326,145 @@ class CarbonKubeStack(Stack):
         
         return bucket
     
+    def _install_katalyst_core(self):
+        """Install Katalyst-core as prerequisite for Carbon-Kube integration."""
+        
+        # Create Katalyst system namespace
+        katalyst_namespace = self.cluster.add_manifest("KatalystNamespace", {
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": "katalyst-system",
+                "labels": {
+                    "name": "katalyst-system",
+                    "katalyst.kubewharf.io/system": "true"
+                }
+            }
+        })
+        
+        # Install Katalyst-core using Helm
+        katalyst_chart = self.cluster.add_helm_chart(
+            "KatalystCore",
+            chart="katalyst-core",
+            repository="https://kubewharf.github.io/charts",
+            namespace="katalyst-system",
+            create_namespace=False,  # Already created above
+            values={
+                "global": {
+                    "imageRegistry": "ghcr.io/kubewharf",
+                    "imageTag": "v0.4.0"
+                },
+                "katalystCore": {
+                    "enabled": True,
+                    "replicas": 2,
+                    "resources": {
+                        "requests": {
+                            "cpu": "100m",
+                            "memory": "128Mi"
+                        },
+                        "limits": {
+                            "cpu": "500m",
+                            "memory": "512Mi"
+                        }
+                    }
+                },
+                "qosManager": {
+                    "enabled": True,
+                    "replicas": 1,
+                    "config": {
+                        "qosLevelConfig": {
+                            "reclaimedCores": True,
+                            "memoryQoS": True,
+                            "cpuQoS": True
+                        }
+                    }
+                },
+                "resourceManager": {
+                    "enabled": True,
+                    "replicas": 1,
+                    "config": {
+                        "resourceAllocation": {
+                            "enableCPUAdvisor": True,
+                            "enableMemoryAdvisor": True,
+                            "enableNetworkAdvisor": True
+                        }
+                    }
+                },
+                "nodeResourceManager": {
+                    "enabled": True,
+                    "daemonset": {
+                        "updateStrategy": {
+                            "type": "RollingUpdate",
+                            "rollingUpdate": {
+                                "maxUnavailable": "10%"
+                            }
+                        }
+                    },
+                    "config": {
+                        "nodeResourceTopology": True,
+                        "cpuManager": True,
+                        "memoryManager": True,
+                        "networkManager": True
+                    }
+                },
+                "scheduler": {
+                    "enabled": True,
+                    "replicas": 2,
+                    "config": {
+                        "profiles": [
+                            {
+                                "schedulerName": "katalyst-scheduler",
+                                "plugins": {
+                                    "filter": {
+                                        "enabled": [
+                                            {"name": "NodeResourceTopologyMatch"},
+                                            {"name": "NodeResourceFit"}
+                                        ]
+                                    },
+                                    "score": {
+                                        "enabled": [
+                                            {"name": "NodeResourceTopologyMatch"},
+                                            {"name": "NodeResourceFit"}
+                                        ]
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "webhook": {
+                    "enabled": True,
+                    "replicas": 2,
+                    "config": {
+                        "mutatingWebhooks": [
+                            "pod-resource-mutating",
+                            "vpa-mutating"
+                        ],
+                        "validatingWebhooks": [
+                            "pod-resource-validating"
+                        ]
+                    }
+                },
+                "crds": {
+                    "install": True
+                },
+                "rbac": {
+                    "create": True
+                },
+                "serviceAccount": {
+                    "create": True,
+                    "annotations": {
+                        f"eks.amazonaws.com/role-arn": self.katalyst_role.role_arn
+                    }
+                }
+            }
+        )
+        
+        # Add dependency on namespace
+        katalyst_chart.node.add_dependency(katalyst_namespace)
+        
+        return katalyst_chart
+    
     def _install_carbon_kube(self):
         """Install Carbon-Kube using Helm chart."""
         
@@ -288,24 +480,7 @@ class CarbonKubeStack(Stack):
             }
         })
         
-        # Install Katalyst (prerequisite)
-        katalyst_chart = self.cluster.add_helm_chart(
-            "Katalyst",
-            chart="katalyst",
-            repository="https://kubewharf.github.io/charts",
-            namespace="katalyst-system",
-            create_namespace=True,
-            values={
-                "scheduler": {
-                    "enabled": True,
-                    "plugins": {
-                        "enabled": ["EmissionPlugin"]
-                    }
-                }
-            }
-        )
-        
-        # Install Carbon-Kube chart
+        # Install Carbon-Kube chart with Katalyst integration
         carbon_kube_chart = self.cluster.add_helm_chart(
             "CarbonKube",
             chart="./charts/carbon-kube",  # Local chart
@@ -340,11 +515,97 @@ class CarbonKubeStack(Stack):
                     "grafana": {
                         "enabled": True
                     }
+                },
+                # Katalyst integration configuration
+                "katalyst": {
+                    "enabled": True,
+                    "carbonQoSController": {
+                        "enabled": True,
+                        "image": {
+                            "repository": "carbon-kube/carbon-qos-controller",
+                            "tag": "v1.0.0"
+                        },
+                        "resources": {
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "128Mi"
+                            },
+                            "limits": {
+                                "cpu": "500m",
+                                "memory": "512Mi"
+                            }
+                        }
+                    },
+                    "enhancedScheduler": {
+                        "enabled": True,
+                        "image": {
+                            "repository": "carbon-kube/enhanced-scheduler",
+                            "tag": "v1.0.0"
+                        },
+                        "resources": {
+                            "requests": {
+                                "cpu": "200m",
+                                "memory": "256Mi"
+                            },
+                            "limits": {
+                                "cpu": "1000m",
+                                "memory": "1Gi"
+                            }
+                        },
+                        "config": {
+                            "weights": {
+                                "carbon": 40,
+                                "qos": 30,
+                                "topology": 20,
+                                "energy": 10
+                            },
+                            "carbonThresholds": {
+                                "green": 100,
+                                "yellow": 300,
+                                "red": 500
+                            }
+                        }
+                    },
+                    "enhancedRLTuner": {
+                        "enabled": True,
+                        "schedule": "0 */6 * * *",  # Every 6 hours
+                        "image": {
+                            "repository": "carbon-kube/katalyst-rl-tuner",
+                            "tag": "v1.0.0"
+                        },
+                        "resources": {
+                            "requests": {
+                                "cpu": "500m",
+                                "memory": "1Gi"
+                            },
+                            "limits": {
+                                "cpu": "2000m",
+                                "memory": "4Gi"
+                            }
+                        }
+                    },
+                    "crds": {
+                        "enabled": True,
+                        "carbonQoSProfile": {
+                            "enabled": True
+                        },
+                        "carbonNodeTopology": {
+                            "enabled": True
+                        },
+                        "carbonOptimizationPolicy": {
+                            "enabled": True
+                        }
+                    },
+                    "integration": {
+                        "katalystCore": {
+                            "namespace": "katalyst-system",
+                            "enabled": True
+                        }
+                    }
                 }
             }
         )
         
-        carbon_kube_chart.node.add_dependency(katalyst_chart)
         carbon_kube_chart.node.add_dependency(namespace)
     
     def _create_monitoring(self):

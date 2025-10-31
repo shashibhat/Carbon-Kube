@@ -96,6 +96,164 @@ rlTuner:
   tolerations: []
   affinity: {}
 
+# Katalyst Integration configuration
+katalyst:
+  enabled: true
+  
+  # Carbon QoS Controller
+  carbonQoSController:
+    enabled: true
+    image:
+      repository: carbon-kube/carbon-qos-controller
+      tag: "v1.0.0"
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    serviceAccount:
+      create: true
+      name: carbon-qos-controller
+      annotations: {}
+    config:
+      reconcileInterval: 60  # seconds
+      qosProfiles:
+        greenGuaranteed:
+          carbonThreshold: 100  # gCO2/kWh
+          cpuGuarantee: 0.8
+          memoryGuarantee: 0.8
+          priority: "high"
+        mixedBurstable:
+          carbonThreshold: 200  # gCO2/kWh
+          cpuGuarantee: 0.5
+          memoryGuarantee: 0.6
+          priority: "medium"
+        dirtyBestEffort:
+          carbonThreshold: 400  # gCO2/kWh
+          cpuGuarantee: 0.2
+          memoryGuarantee: 0.3
+          priority: "low"
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+  
+  # Enhanced Scheduler Plugin
+  enhancedScheduler:
+    enabled: true
+    image:
+      repository: carbon-kube/enhanced-scheduler
+      tag: "v1.0.0"
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 200m
+        memory: 256Mi
+    serviceAccount:
+      create: true
+      name: enhanced-scheduler
+      annotations: {}
+    config:
+      schedulerName: "carbon-katalyst-scheduler"
+      carbonWeight: 0.4
+      qosWeight: 0.3
+      topologyWeight: 0.2
+      energyWeight: 0.1
+      carbonThresholds:
+        green: 100    # gCO2/kWh
+        mixed: 200    # gCO2/kWh
+        dirty: 400    # gCO2/kWh
+      topologyAwareness:
+        enabled: true
+        numaAffinity: true
+        gpuLocality: true
+        networkTopology: true
+      energyEfficiency:
+        enabled: true
+        pueThreshold: 2.0
+        powerCapEnabled: true
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+  
+  # Katalyst RL Tuner (Enhanced)
+  katalystRLTuner:
+    enabled: true
+    schedule: "0 */4 * * *"  # Every 4 hours
+    image:
+      repository: carbon-kube/katalyst-rl-tuner
+      tag: "v1.0.0"
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+    serviceAccount:
+      create: true
+      name: katalyst-rl-tuner
+      annotations: {}
+    config:
+      environment:
+        episodeLength: 288  # 24 hours in 5-min intervals
+        maxZones: 10
+        maxNodes: 10
+      training:
+        totalTimesteps: 100000
+        learningRate: 0.0003
+        batchSize: 256
+        bufferSize: 100000
+        learningStarts: 1000
+      evaluation:
+        evalFreq: 1000
+        evalEpisodes: 10
+      monitoring:
+        prometheusGateway: "prometheus-pushgateway:9091"
+        metricsInterval: 60
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+  
+  # Katalyst CRDs and RBAC
+  crds:
+    enabled: true
+    # Custom Resource Definitions for Katalyst integration
+    carbonQoSProfile:
+      enabled: true
+    carbonNodeTopology:
+      enabled: true
+    carbonOptimizationPolicy:
+      enabled: true
+  
+  # Integration with existing Katalyst components
+  integration:
+    # Katalyst Core components
+    katalystCore:
+      enabled: true
+      namespace: "katalyst-system"
+    
+    # QoS Manager integration
+    qosManager:
+      enabled: true
+      carbonAware: true
+      topologyAware: true
+    
+    # Resource Manager integration
+    resourceManager:
+      enabled: true
+      carbonOptimized: true
+      energyEfficient: true
+    
+    # Node Resource Manager integration
+    nodeResourceManager:
+      enabled: true
+      carbonMetrics: true
+      topologyMetrics: true
+
 # Configuration
 config:
   # Migration threshold (gCO2eq/kWh)

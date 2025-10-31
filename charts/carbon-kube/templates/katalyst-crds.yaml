@@ -1,0 +1,448 @@
+{{- if and .Values.katalyst.enabled .Values.katalyst.crds.enabled }}
+{{- if .Values.katalyst.crds.carbonQoSProfile.enabled }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: carbonqosprofiles.carbon.katalyst.io
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: katalyst-crds
+spec:
+  group: carbon.katalyst.io
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              carbonThreshold:
+                type: number
+                minimum: 0
+                description: "Carbon intensity threshold in gCO2/kWh"
+              cpuGuarantee:
+                type: number
+                minimum: 0
+                maximum: 1
+                description: "CPU guarantee ratio"
+              memoryGuarantee:
+                type: number
+                minimum: 0
+                maximum: 1
+                description: "Memory guarantee ratio"
+              priority:
+                type: string
+                enum: ["high", "medium", "low"]
+                description: "QoS priority level"
+              energyEfficiency:
+                type: object
+                properties:
+                  pueThreshold:
+                    type: number
+                    minimum: 1.0
+                    description: "Power Usage Effectiveness threshold"
+                  powerCapEnabled:
+                    type: boolean
+                    description: "Enable power capping"
+                  thermalManagement:
+                    type: boolean
+                    description: "Enable thermal management"
+              topologyAwareness:
+                type: object
+                properties:
+                  numaAffinity:
+                    type: boolean
+                    description: "Enable NUMA affinity"
+                  gpuLocality:
+                    type: boolean
+                    description: "Enable GPU locality"
+                  networkOptimization:
+                    type: boolean
+                    description: "Enable network optimization"
+            required:
+            - carbonThreshold
+            - cpuGuarantee
+            - memoryGuarantee
+            - priority
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum: ["Pending", "Active", "Failed"]
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                    reason:
+                      type: string
+                    message:
+                      type: string
+              appliedNodes:
+                type: array
+                items:
+                  type: string
+              carbonSavings:
+                type: number
+                description: "Estimated carbon savings in kg CO2"
+    additionalPrinterColumns:
+    - name: Carbon Threshold
+      type: number
+      jsonPath: .spec.carbonThreshold
+    - name: Priority
+      type: string
+      jsonPath: .spec.priority
+    - name: Phase
+      type: string
+      jsonPath: .status.phase
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: carbonqosprofiles
+    singular: carbonqosprofile
+    kind: CarbonQoSProfile
+    shortNames:
+    - cqos
+---
+{{- end }}
+{{- if .Values.katalyst.crds.carbonNodeTopology.enabled }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: carbonnodetopologies.carbon.katalyst.io
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: katalyst-crds
+spec:
+  group: carbon.katalyst.io
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              nodeName:
+                type: string
+                description: "Target node name"
+              carbonIntensity:
+                type: number
+                minimum: 0
+                description: "Current carbon intensity in gCO2/kWh"
+              energySource:
+                type: object
+                properties:
+                  renewable:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                    description: "Renewable energy percentage"
+                  coal:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                    description: "Coal energy percentage"
+                  gas:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                    description: "Natural gas energy percentage"
+                  nuclear:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                    description: "Nuclear energy percentage"
+              topology:
+                type: object
+                properties:
+                  numaNodes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        cpus:
+                          type: array
+                          items:
+                            type: integer
+                        memory:
+                          type: string
+                        powerZone:
+                          type: integer
+                  gpus:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        model:
+                          type: string
+                        powerConsumption:
+                          type: number
+                        numaNode:
+                          type: integer
+                  networkDevices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        bandwidth:
+                          type: string
+                        powerConsumption:
+                          type: number
+              powerProfile:
+                type: object
+                properties:
+                  maxPower:
+                    type: number
+                    description: "Maximum power consumption in watts"
+                  idlePower:
+                    type: number
+                    description: "Idle power consumption in watts"
+                  pue:
+                    type: number
+                    minimum: 1.0
+                    description: "Power Usage Effectiveness"
+                  thermalDesignPower:
+                    type: number
+                    description: "Thermal Design Power in watts"
+            required:
+            - nodeName
+            - carbonIntensity
+          status:
+            type: object
+            properties:
+              lastUpdated:
+                type: string
+                format: date-time
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                    reason:
+                      type: string
+                    message:
+                      type: string
+              optimizationScore:
+                type: number
+                minimum: 0
+                maximum: 100
+                description: "Carbon optimization score"
+    additionalPrinterColumns:
+    - name: Node
+      type: string
+      jsonPath: .spec.nodeName
+    - name: Carbon Intensity
+      type: number
+      jsonPath: .spec.carbonIntensity
+    - name: Renewable %
+      type: number
+      jsonPath: .spec.energySource.renewable
+    - name: Optimization Score
+      type: number
+      jsonPath: .status.optimizationScore
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+  scope: Cluster
+  names:
+    plural: carbonnodetopologies
+    singular: carbonnodetopology
+    kind: CarbonNodeTopology
+    shortNames:
+    - ctopo
+---
+{{- end }}
+{{- if .Values.katalyst.crds.carbonOptimizationPolicy.enabled }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: carbonoptimizationpolicies.carbon.katalyst.io
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: katalyst-crds
+spec:
+  group: carbon.katalyst.io
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              targetNamespace:
+                type: string
+                description: "Target namespace for optimization"
+              carbonBudget:
+                type: object
+                properties:
+                  daily:
+                    type: number
+                    minimum: 0
+                    description: "Daily carbon budget in kg CO2"
+                  monthly:
+                    type: number
+                    minimum: 0
+                    description: "Monthly carbon budget in kg CO2"
+                  annual:
+                    type: number
+                    minimum: 0
+                    description: "Annual carbon budget in kg CO2"
+              optimizationStrategy:
+                type: string
+                enum: ["aggressive", "balanced", "conservative"]
+                description: "Optimization strategy"
+              migrationPolicy:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: "Enable workload migration"
+                  maxMigrationsPerHour:
+                    type: integer
+                    minimum: 0
+                    description: "Maximum migrations per hour"
+                  carbonThresholdDelta:
+                    type: number
+                    minimum: 0
+                    description: "Minimum carbon improvement for migration"
+                  excludeWorkloads:
+                    type: array
+                    items:
+                      type: string
+                    description: "Workloads to exclude from migration"
+              schedulingPolicy:
+                type: object
+                properties:
+                  preferGreenNodes:
+                    type: boolean
+                    description: "Prefer nodes with low carbon intensity"
+                  carbonAwareSpread:
+                    type: boolean
+                    description: "Spread workloads across carbon-efficient nodes"
+                  topologyAware:
+                    type: boolean
+                    description: "Consider topology in scheduling decisions"
+              rlOptimization:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: "Enable RL-based optimization"
+                  trainingSchedule:
+                    type: string
+                    description: "Cron schedule for RL training"
+                  explorationRate:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                    description: "Exploration rate for RL agent"
+            required:
+            - targetNamespace
+            - carbonBudget
+            - optimizationStrategy
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum: ["Pending", "Active", "Failed"]
+              carbonUsage:
+                type: object
+                properties:
+                  current:
+                    type: number
+                    description: "Current carbon usage in kg CO2"
+                  daily:
+                    type: number
+                    description: "Daily carbon usage in kg CO2"
+                  monthly:
+                    type: number
+                    description: "Monthly carbon usage in kg CO2"
+              optimizationMetrics:
+                type: object
+                properties:
+                  carbonSavings:
+                    type: number
+                    description: "Total carbon savings in kg CO2"
+                  migrationsPerformed:
+                    type: integer
+                    description: "Number of migrations performed"
+                  averageOptimizationScore:
+                    type: number
+                    description: "Average optimization score"
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                    reason:
+                      type: string
+                    message:
+                      type: string
+    additionalPrinterColumns:
+    - name: Namespace
+      type: string
+      jsonPath: .spec.targetNamespace
+    - name: Strategy
+      type: string
+      jsonPath: .spec.optimizationStrategy
+    - name: Carbon Savings
+      type: number
+      jsonPath: .status.optimizationMetrics.carbonSavings
+    - name: Phase
+      type: string
+      jsonPath: .status.phase
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: carbonoptimizationpolicies
+    singular: carbonoptimizationpolicy
+    kind: CarbonOptimizationPolicy
+    shortNames:
+    - cop
+{{- end }}
+{{- end }}

@@ -1,0 +1,412 @@
+---
+# ServiceMonitor for Carbon QoS Controller
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: carbon-qos-controller
+  namespace: monitoring
+  labels:
+    app: carbon-qos-controller
+    carbon.katalyst.io/component: "qos-controller"
+spec:
+  selector:
+    matchLabels:
+      app: carbon-qos-controller
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+
+---
+# ServiceMonitor for Enhanced Scheduler
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: carbon-katalyst-scheduler
+  namespace: monitoring
+  labels:
+    app: carbon-katalyst-scheduler
+    carbon.katalyst.io/component: "scheduler"
+spec:
+  selector:
+    matchLabels:
+      app: carbon-katalyst-scheduler
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+
+---
+# ServiceMonitor for Katalyst RL Tuner
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: katalyst-rl-tuner
+  namespace: monitoring
+  labels:
+    app: katalyst-rl-tuner
+    carbon.katalyst.io/component: "rl-tuner"
+spec:
+  selector:
+    matchLabels:
+      app: katalyst-rl-tuner
+  endpoints:
+  - port: metrics
+    interval: 60s
+    path: /metrics
+
+---
+# PrometheusRule for Carbon Optimization Alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: carbon-optimization-alerts
+  namespace: monitoring
+  labels:
+    carbon.katalyst.io/component: "alerting"
+spec:
+  groups:
+  - name: carbon.optimization
+    rules:
+    - alert: HighCarbonIntensity
+      expr: carbon_intensity_gco2_kwh > 500
+      for: 5m
+      labels:
+        severity: warning
+        component: carbon-monitoring
+      annotations:
+        summary: "High carbon intensity detected"
+        description: "Carbon intensity is {{ $value }} gCO2/kWh, which is above the threshold of 500 gCO2/kWh"
+
+    - alert: CarbonBudgetExceeded
+      expr: carbon_budget_usage_percentage > 90
+      for: 2m
+      labels:
+        severity: critical
+        component: carbon-monitoring
+      annotations:
+        summary: "Carbon budget exceeded"
+        description: "Carbon budget usage is {{ $value }}%, exceeding 90% threshold"
+
+    - alert: QoSProfileViolation
+      expr: qos_profile_violations_total > 10
+      for: 5m
+      labels:
+        severity: warning
+        component: qos-controller
+      annotations:
+        summary: "QoS profile violations detected"
+        description: "{{ $value }} QoS profile violations detected in the last 5 minutes"
+
+    - alert: SchedulerPluginFailure
+      expr: scheduler_plugin_failures_total > 5
+      for: 2m
+      labels:
+        severity: critical
+        component: scheduler
+      annotations:
+        summary: "Scheduler plugin failures"
+        description: "{{ $value }} scheduler plugin failures detected"
+
+    - alert: RLTunerTrainingFailure
+      expr: rl_tuner_training_failures_total > 3
+      for: 10m
+      labels:
+        severity: warning
+        component: rl-tuner
+      annotations:
+        summary: "RL tuner training failures"
+        description: "{{ $value }} RL tuner training failures detected"
+
+    - alert: EnergyEfficiencyDegraded
+      expr: energy_efficiency_score < 0.7
+      for: 10m
+      labels:
+        severity: warning
+        component: energy-monitoring
+      annotations:
+        summary: "Energy efficiency degraded"
+        description: "Energy efficiency score is {{ $value }}, below threshold of 0.7"
+
+    - alert: NodeCarbonIntensityHigh
+      expr: node_carbon_intensity_gco2_kwh > 600
+      for: 5m
+      labels:
+        severity: warning
+        component: node-monitoring
+      annotations:
+        summary: "High node carbon intensity"
+        description: "Node {{ $labels.node }} has carbon intensity of {{ $value }} gCO2/kWh"
+
+    - alert: MigrationRateHigh
+      expr: rate(pod_migrations_total[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        component: migration-controller
+      annotations:
+        summary: "High pod migration rate"
+        description: "Pod migration rate is {{ $value }} migrations per second"
+
+---
+# Grafana Dashboard ConfigMap for Carbon Optimization
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: carbon-optimization-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    carbon.katalyst.io/component: "dashboard"
+data:
+  carbon-optimization.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Carbon Optimization with Katalyst",
+        "tags": ["carbon", "katalyst", "optimization"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Carbon Intensity",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "carbon_intensity_gco2_kwh",
+                "legendFormat": "gCO2/kWh"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "yellow", "value": 300},
+                    {"color": "red", "value": 500}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Carbon Budget Usage",
+            "type": "gauge",
+            "targets": [
+              {
+                "expr": "carbon_budget_usage_percentage",
+                "legendFormat": "Usage %"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "min": 0,
+                "max": 100,
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "yellow", "value": 70},
+                    {"color": "red", "value": 90}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "QoS Profile Distribution",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "sum by (qos_profile) (pods_by_qos_profile)",
+                "legendFormat": "{{ qos_profile }}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "Energy Efficiency Score",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "energy_efficiency_score",
+                "legendFormat": "Efficiency"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "min": 0,
+                "max": 1,
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": null},
+                    {"color": "yellow", "value": 0.6},
+                    {"color": "green", "value": 0.8}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "Pod Migrations Over Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(pod_migrations_total[5m])",
+                "legendFormat": "Migrations/sec"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+          },
+          {
+            "id": 6,
+            "title": "Node Carbon Intensity",
+            "type": "heatmap",
+            "targets": [
+              {
+                "expr": "node_carbon_intensity_gco2_kwh",
+                "legendFormat": "{{ node }}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+
+---
+# Alertmanager Configuration for Carbon Optimization
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: carbon-alertmanager-config
+  namespace: monitoring
+  labels:
+    carbon.katalyst.io/component: "alerting"
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'localhost:587'
+      smtp_from: 'carbon-kube@example.com'
+
+    route:
+      group_by: ['alertname', 'component']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'carbon-team'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'carbon-critical'
+      - match:
+          component: carbon-monitoring
+        receiver: 'carbon-monitoring-team'
+
+    receivers:
+    - name: 'carbon-team'
+      email_configs:
+      - to: 'carbon-team@example.com'
+        subject: 'Carbon-Kube Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          {{ end }}
+
+    - name: 'carbon-critical'
+      email_configs:
+      - to: 'carbon-oncall@example.com'
+        subject: 'CRITICAL Carbon-Kube Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          CRITICAL Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          {{ end }}
+      slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        channel: '#carbon-alerts'
+        title: 'CRITICAL Carbon-Kube Alert'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+
+    - name: 'carbon-monitoring-team'
+      email_configs:
+      - to: 'carbon-monitoring@example.com'
+        subject: 'Carbon Monitoring Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          {{ end }}
+
+---
+# Service for Carbon QoS Controller Metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: carbon-qos-controller-metrics
+  namespace: carbon-kube
+  labels:
+    app: carbon-qos-controller
+    carbon.katalyst.io/component: "qos-controller"
+spec:
+  selector:
+    app: carbon-qos-controller
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP
+
+---
+# Service for Enhanced Scheduler Metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: carbon-katalyst-scheduler-metrics
+  namespace: kube-system
+  labels:
+    app: carbon-katalyst-scheduler
+    carbon.katalyst.io/component: "scheduler"
+spec:
+  selector:
+    app: carbon-katalyst-scheduler
+  ports:
+  - name: metrics
+    port: 10259
+    targetPort: 10259
+  type: ClusterIP
+
+---
+# Service for Katalyst RL Tuner Metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: katalyst-rl-tuner-metrics
+  namespace: carbon-kube
+  labels:
+    app: katalyst-rl-tuner
+    carbon.katalyst.io/component: "rl-tuner"
+spec:
+  selector:
+    app: katalyst-rl-tuner
+  ports:
+  - name: metrics
+    port: 8081
+    targetPort: 8081
+  type: ClusterIP
