@@ -36,7 +36,7 @@ boundaries, so you can:
 
 ```mermaid
 graph TD
-    A[Carbon APIs<br/>(Electricity Maps/NOAA)] --> B[Poll Service<br/>(Python Async)]
+    A[Carbon APIs \n (Electricity Maps/NOAA)] --> B[Poll Service \n (Python Async)]
     B --> C[CarbonScore CRD]
     C --> D[Scheduling Mutator<br/>(Go)]
     D --> E[Node Tainter Controller<br/>(Go)]
