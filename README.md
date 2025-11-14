@@ -36,15 +36,15 @@ boundaries, so you can:
 
 ```mermaid
 graph TD
-    A[Carbon APIs \n (Electricity Maps/NOAA)] --> B[Poll Service \n (Python Async)]
-    B --> C[CarbonScore CRD]
-    C --> D[Scheduling Mutator<br/>(Go)]
-    D --> E[Node Tainter Controller<br/>(Go)]
-    E --> F[Karpenter / Rescheduler]
-    F --> G[Workload Migration]
-    G --> H[Metrics Exporter<br/>(Go)]
-    H --> I[Prometheus / Grafana]
-    G --> J[RL Tuner<br/>(Python)]
+    A["Carbon APIs \n (Electricity Maps/NOAA)"] --> B["Poll Service \n (Python Async)"]
+    B --> C["CarbonScore CRD"]
+    C --> D["Scheduling Mutator<br>(Go)"]
+    D --> E["Node Tainter Controller<br>(Go)"]
+    E --> F["Karpenter / Rescheduler"]
+    F --> G["Workload Migration"]
+    G --> H["Metrics Exporter<br>(Go)"]
+    H --> I["Prometheus / Grafana"]
+    G --> J["RL Tuner<br>(Python)"]
     J --> D
     subgraph "Kubernetes Cluster"
         C; D; E; H
