@@ -1,0 +1,2 @@
+# Top-level BUILD file. For a real Bazel setup, you would add
+# go_binary / py_binary targets here or in per-package BUILD files.

@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-kube-mutator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carbon-kube-mutator
+  template:
+    metadata:
+      labels:
+        app: carbon-kube-mutator
+    spec:
+      containers:
+        - name: mutator
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          args: ["mutator"]

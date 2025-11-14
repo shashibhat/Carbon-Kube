@@ -1,0 +1,10 @@
+image:
+  repository: carbon-kube
+  tag: latest
+  pullPolicy: IfNotPresent
+
+poller:
+  intervalSeconds: 300
+
+metrics:
+  port: 9090

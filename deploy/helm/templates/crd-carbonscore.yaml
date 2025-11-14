@@ -1,0 +1,33 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: carbonscores.emission.carbon-kube.io
+spec:
+  group: emission.carbon-kube.io
+  scope: Namespaced
+  names:
+    plural: carbonscores
+    singular: carbonscore
+    kind: CarbonScore
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                scores:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      zone:
+                        type: string
+                      intensity_g_per_kwh:
+                        type: number
+                      cpu_multiplier:
+                        type: number

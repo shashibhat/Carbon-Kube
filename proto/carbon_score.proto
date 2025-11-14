@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package carbonkube;
+
+import "google/protobuf/timestamp.proto";
+
+message CarbonScore {
+  string zone = 1;
+  float intensity_g_per_kwh = 2;
+  google.protobuf.Timestamp forecast_time = 3;
+  float cpu_multiplier = 4;
+}
+
+message Config {
+  float migration_threshold = 1;
+  repeated string green_zones = 2;
+  bool rl_enabled = 3;
+}

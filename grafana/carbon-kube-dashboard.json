@@ -1,0 +1,26 @@
+{
+  "title": "Carbon-Kube CO2 Savings",
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "CO2 Saved (kg)",
+      "targets": [
+        {
+          "expr": "co2_saved_kg_total",
+          "legendFormat": "saved"
+        }
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "Migrations",
+      "targets": [
+        {
+          "expr": "migrations_total",
+          "legendFormat": "migrations"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-kube-poller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carbon-kube-poller
+  template:
+    metadata:
+      labels:
+        app: carbon-kube-poller
+    spec:
+      containers:
+        - name: poller
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          args: ["poll"]
+          env:
+            - name: POLL_INTERVAL_SECONDS
+              value: "{{ .Values.poller.intervalSeconds }}"

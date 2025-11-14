@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: carbon-kube-metrics
+spec:
+  selector:
+    app: carbon-kube-mutator
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
