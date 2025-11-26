@@ -1,0 +1,10 @@
+# Default values for nvidia-operator subchart
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Enable/disable the NVIDIA Operator
+nvidia:
+  enabled: false
+
+# Import GPU-specific values when enabled
+# Use values-gpu.yaml for full GPU configuration with DCGM and MIG support

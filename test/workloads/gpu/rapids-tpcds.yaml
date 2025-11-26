@@ -1,0 +1,252 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rapids-tpcds-carbon-eval
+  namespace: carbon-kube
+  labels:
+    app: rapids-tpcds
+    workload-type: analytics
+    carbon-aware: "true"
+    evaluation: "gpu-carbon"
+  annotations:
+    carbon-kube.io/qos-profile: "batch-optimized"
+    carbon-kube.io/migration-policy: "checkpointable"
+    carbon-kube.io/carbon-priority: "low"
+    carbon-kube.io/sla-class: "batch"
+spec:
+  parallelism: 1
+  completions: 1
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: rapids-tpcds
+        workload-type: analytics
+        carbon-aware: "true"
+      annotations:
+        carbon-kube.io/checkpoint-interval: "600s"
+        carbon-kube.io/max-migration-time: "300s"
+    spec:
+      schedulerName: carbon-kube-scheduler
+      restartPolicy: Never
+      nodeSelector:
+        node.kubernetes.io/instance-type: "p4d.24xlarge"
+        carbon-kube.io/gpu-enabled: "true"
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "carbon-kube.io/gpu-workload"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      containers:
+      - name: rapids-tpcds
+        image: rapidsai/rapidsai:23.10-cuda11.8-runtime-ubuntu22.04-py3.10
+        command:
+        - python
+        - -c
+        - |
+          import cudf
+          import cupy as cp
+          import time
+          import numpy as np
+          import pandas as pd
+          from datetime import datetime, timedelta
+          import gc
+          
+          print("RAPIDS TPC-DS Carbon Evaluation Benchmark")
+          print(f"CUDA available: {cp.cuda.is_available()}")
+          print(f"GPU count: {cp.cuda.runtime.getDeviceCount()}")
+          
+          # Generate synthetic TPC-DS-like data for evaluation
+          def generate_store_sales_data(num_rows=1000000):
+              print(f"Generating {num_rows} rows of store sales data...")
+              
+              # Generate synthetic data similar to TPC-DS store_sales table
+              data = {
+                  'ss_sold_date_sk': cp.random.randint(1, 3653, num_rows),  # ~10 years of dates
+                  'ss_sold_time_sk': cp.random.randint(1, 86400, num_rows),  # seconds in day
+                  'ss_item_sk': cp.random.randint(1, 300000, num_rows),  # item keys
+                  'ss_customer_sk': cp.random.randint(1, 2000000, num_rows),  # customer keys
+                  'ss_cdemo_sk': cp.random.randint(1, 1920800, num_rows),  # customer demo keys
+                  'ss_hdemo_sk': cp.random.randint(1, 7200, num_rows),  # household demo keys
+                  'ss_addr_sk': cp.random.randint(1, 1000000, num_rows),  # address keys
+                  'ss_store_sk': cp.random.randint(1, 1002, num_rows),  # store keys
+                  'ss_promo_sk': cp.random.randint(1, 1500, num_rows),  # promotion keys
+                  'ss_ticket_number': cp.random.randint(1, 240000, num_rows),
+                  'ss_quantity': cp.random.randint(1, 100, num_rows),
+                  'ss_wholesale_cost': cp.random.uniform(1.00, 100.00, num_rows),
+                  'ss_list_price': cp.random.uniform(1.00, 200.00, num_rows),
+                  'ss_sales_price': cp.random.uniform(0.50, 200.00, num_rows),
+                  'ss_ext_discount_amt': cp.random.uniform(0.00, 30000.00, num_rows),
+                  'ss_ext_sales_price': cp.random.uniform(0.50, 50000.00, num_rows),
+                  'ss_ext_wholesale_cost': cp.random.uniform(1.00, 50000.00, num_rows),
+                  'ss_ext_list_price': cp.random.uniform(1.00, 60000.00, num_rows),
+                  'ss_ext_tax': cp.random.uniform(0.00, 5000.00, num_rows),
+                  'ss_coupon_amt': cp.random.uniform(0.00, 30000.00, num_rows),
+                  'ss_net_paid': cp.random.uniform(0.50, 50000.00, num_rows),
+                  'ss_net_paid_inc_tax': cp.random.uniform(0.50, 55000.00, num_rows),
+                  'ss_net_profit': cp.random.uniform(-10000.00, 20000.00, num_rows)
+              }
+              
+              return cudf.DataFrame(data)
+          
+          def run_tpcds_queries(df):
+              print("Running TPC-DS-like analytical queries...")
+              
+              start_time = time.time()
+              
+              # Query 1: Sales by store and date (similar to TPC-DS Q3)
+              print("Query 1: Sales aggregation by store...")
+              q1_start = time.time()
+              result1 = df.groupby(['ss_store_sk', 'ss_sold_date_sk']).agg({
+                  'ss_ext_sales_price': 'sum',
+                  'ss_net_profit': 'sum',
+                  'ss_quantity': 'sum'
+              }).reset_index()
+              q1_time = time.time() - q1_start
+              print(f"Query 1 completed in {q1_time:.2f}s, result shape: {result1.shape}")
+              
+              # Query 2: Customer analysis (similar to TPC-DS Q7)
+              print("Query 2: Customer sales analysis...")
+              q2_start = time.time()
+              result2 = df.groupby('ss_customer_sk').agg({
+                  'ss_ext_sales_price': ['sum', 'mean', 'count'],
+                  'ss_net_profit': 'sum'
+              }).reset_index()
+              q2_time = time.time() - q2_start
+              print(f"Query 2 completed in {q2_time:.2f}s, result shape: {result2.shape}")
+              
+              # Query 3: Item performance analysis
+              print("Query 3: Item performance analysis...")
+              q3_start = time.time()
+              result3 = df.groupby('ss_item_sk').agg({
+                  'ss_quantity': 'sum',
+                  'ss_ext_sales_price': 'sum',
+                  'ss_net_profit': 'mean'
+              }).sort_values('ss_ext_sales_price', ascending=False).head(1000)
+              q3_time = time.time() - q3_start
+              print(f"Query 3 completed in {q3_time:.2f}s, result shape: {result3.shape}")
+              
+              # Query 4: Complex join-like operation with filtering
+              print("Query 4: Complex filtering and aggregation...")
+              q4_start = time.time()
+              filtered_df = df[
+                  (df['ss_ext_sales_price'] > 100) & 
+                  (df['ss_net_profit'] > 0) &
+                  (df['ss_quantity'] > 5)
+              ]
+              result4 = filtered_df.groupby(['ss_store_sk', 'ss_item_sk']).agg({
+                  'ss_ext_sales_price': 'sum',
+                  'ss_net_profit': 'sum',
+                  'ss_quantity': 'mean'
+              }).reset_index()
+              q4_time = time.time() - q4_start
+              print(f"Query 4 completed in {q4_time:.2f}s, result shape: {result4.shape}")
+              
+              # Query 5: Time-based analysis
+              print("Query 5: Time-based sales analysis...")
+              q5_start = time.time()
+              result5 = df.groupby('ss_sold_date_sk').agg({
+                  'ss_ext_sales_price': ['sum', 'mean'],
+                  'ss_net_profit': 'sum',
+                  'ss_quantity': 'sum'
+              }).sort_values(('ss_ext_sales_price', 'sum'), ascending=False)
+              q5_time = time.time() - q5_start
+              print(f"Query 5 completed in {q5_time:.2f}s, result shape: {result5.shape}")
+              
+              total_time = time.time() - start_time
+              print(f"All queries completed in {total_time:.2f}s")
+              
+              return {
+                  'query_times': [q1_time, q2_time, q3_time, q4_time, q5_time],
+                  'total_time': total_time,
+                  'results': [result1, result2, result3, result4, result5]
+              }
+          
+          def main():
+              print("Starting RAPIDS TPC-DS carbon evaluation...")
+              
+              # Generate multiple datasets of increasing size
+              dataset_sizes = [500000, 1000000, 2000000]  # Rows
+              
+              for size in dataset_sizes:
+                  print(f"\n=== Processing dataset with {size} rows ===")
+                  
+                  # Generate data
+                  df = generate_store_sales_data(size)
+                  print(f"Dataset generated: {df.shape}")
+                  print(f"Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
+                  
+                  # Run queries
+                  results = run_tpcds_queries(df)
+                  
+                  # Print performance summary
+                  print(f"Performance Summary for {size} rows:")
+                  for i, query_time in enumerate(results['query_times'], 1):
+                      print(f"  Query {i}: {query_time:.2f}s")
+                  print(f"  Total: {results['total_time']:.2f}s")
+                  
+                  # Cleanup
+                  del df
+                  for result in results['results']:
+                      del result
+                  gc.collect()
+                  cp.get_default_memory_pool().free_all_blocks()
+                  
+                  print(f"Completed dataset size {size}")
+              
+              print("\nRAPIDS TPC-DS carbon evaluation completed successfully!")
+          
+          if __name__ == "__main__":
+              main()
+        resources:
+          requests:
+            nvidia.com/gpu: "1"
+            cpu: "8"
+            memory: "32Gi"
+            ephemeral-storage: "20Gi"
+          limits:
+            nvidia.com/gpu: "1"
+            cpu: "16"
+            memory: "64Gi"
+            ephemeral-storage: "50Gi"
+        env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: RAPIDS_NO_INITIALIZE
+          value: "1"
+        - name: CUDF_SPILL
+          value: "1"
+        - name: LIBCUDF_CUFILE_POLICY
+          value: "KVIKIO"
+        volumeMounts:
+        - name: tmp-storage
+          mountPath: /tmp
+        - name: shm
+          mountPath: /dev/shm
+      volumes:
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: "10Gi"
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: "16Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rapids-tpcds-metrics
+  namespace: carbon-kube
+  labels:
+    app: rapids-tpcds
+spec:
+  selector:
+    app: rapids-tpcds
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP

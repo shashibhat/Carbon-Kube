@@ -1,0 +1,152 @@
+{{- if and .Values.katalyst.enabled .Values.katalyst.katalystRLTuner.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "carbon-kube.fullname" . }}-katalyst-rl-tuner
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: katalyst-rl-tuner
+spec:
+  schedule: {{ .Values.katalyst.katalystRLTuner.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          annotations:
+            checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+            {{- with .Values.podAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          labels:
+            {{- include "carbon-kube.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: katalyst-rl-tuner
+            {{- with .Values.podLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        spec:
+          restartPolicy: OnFailure
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          serviceAccountName: {{ .Values.katalyst.katalystRLTuner.serviceAccount.name | default (printf "%s-katalyst-rl-tuner" (include "carbon-kube.fullname" .)) }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: katalyst-rl-tuner
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.katalyst.katalystRLTuner.image.repository }}:{{ .Values.katalyst.katalystRLTuner.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - python3
+                - /app/katalyst_rl_tuner.py
+                - --mode=optimize
+                - --duration=4
+                - --config=/etc/config/config.json
+              env:
+                - name: PYTHONPATH
+                  value: "/app"
+                - name: NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                - name: PROMETHEUS_GATEWAY
+                  value: {{ .Values.katalyst.katalystRLTuner.config.monitoring.prometheusGateway | quote }}
+                {{- with .Values.extraEnvVars }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+              resources:
+                {{- toYaml .Values.katalyst.katalystRLTuner.resources | nindent 16 }}
+              volumeMounts:
+                - name: config
+                  mountPath: /etc/config
+                  readOnly: true
+                - name: model-storage
+                  mountPath: /app/models
+                - name: logs
+                  mountPath: /app/logs
+                {{- with .Values.extraVolumeMounts }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+          volumes:
+            - name: config
+              configMap:
+                name: {{ include "carbon-kube.fullname" . }}-katalyst-rl-config
+            - name: model-storage
+              persistentVolumeClaim:
+                claimName: {{ include "carbon-kube.fullname" . }}-rl-models
+            - name: logs
+              emptyDir: {}
+            {{- with .Values.extraVolumes }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.katalyst.katalystRLTuner.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.katalyst.katalystRLTuner.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.katalyst.katalystRLTuner.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "carbon-kube.fullname" . }}-katalyst-rl-config
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: katalyst-rl-tuner
+data:
+  config.json: |
+    {
+      "environment": {
+        "episode_length": {{ .Values.katalyst.katalystRLTuner.config.environment.episodeLength }},
+        "max_zones": {{ .Values.katalyst.katalystRLTuner.config.environment.maxZones }},
+        "max_nodes": {{ .Values.katalyst.katalystRLTuner.config.environment.maxNodes }}
+      },
+      "training": {
+        "total_timesteps": {{ .Values.katalyst.katalystRLTuner.config.training.totalTimesteps }},
+        "learning_rate": {{ .Values.katalyst.katalystRLTuner.config.training.learningRate }},
+        "batch_size": {{ .Values.katalyst.katalystRLTuner.config.training.batchSize }},
+        "buffer_size": {{ .Values.katalyst.katalystRLTuner.config.training.bufferSize }},
+        "learning_starts": {{ .Values.katalyst.katalystRLTuner.config.training.learningStarts }}
+      },
+      "evaluation": {
+        "eval_freq": {{ .Values.katalyst.katalystRLTuner.config.evaluation.evalFreq }},
+        "eval_episodes": {{ .Values.katalyst.katalystRLTuner.config.evaluation.evalEpisodes }}
+      },
+      "monitoring": {
+        "prometheus_gateway": "{{ .Values.katalyst.katalystRLTuner.config.monitoring.prometheusGateway }}",
+        "metrics_interval": {{ .Values.katalyst.katalystRLTuner.config.monitoring.metricsInterval }}
+      }
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "carbon-kube.fullname" . }}-rl-models
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: katalyst-rl-tuner
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  {{- if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass }}
+  {{- end }}
+{{- end }}

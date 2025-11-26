@@ -1,0 +1,174 @@
+{{- if and .Values.katalyst.enabled .Values.katalyst.carbonQoSController.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "carbon-kube.fullname" . }}-carbon-qos-controller
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: carbon-qos-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "carbon-kube.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: carbon-qos-controller
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "carbon-kube.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: carbon-qos-controller
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.katalyst.carbonQoSController.serviceAccount.name | default (printf "%s-carbon-qos-controller" (include "carbon-kube.fullname" .)) }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: carbon-qos-controller
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.katalyst.carbonQoSController.image.repository }}:{{ .Values.katalyst.carbonQoSController.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: RECONCILE_INTERVAL
+              value: {{ .Values.katalyst.carbonQoSController.config.reconcileInterval | quote }}
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            {{- with .Values.extraEnvVars }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            {{- if .Values.livenessProbe.enabled }}
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+            {{- end }}
+          readinessProbe:
+            {{- if .Values.readinessProbe.enabled }}
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.katalyst.carbonQoSController.resources | nindent 12 }}
+          volumeMounts:
+            - name: qos-profiles
+              mountPath: /etc/carbon-qos
+              readOnly: true
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: qos-profiles
+          configMap:
+            name: {{ include "carbon-kube.fullname" . }}-qos-profiles
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.katalyst.carbonQoSController.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.katalyst.carbonQoSController.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.katalyst.carbonQoSController.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "carbon-kube.fullname" . }}-qos-profiles
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: carbon-qos-controller
+data:
+  green-guaranteed.json: |
+    {
+      "name": "green-guaranteed",
+      "carbonThreshold": {{ .Values.katalyst.carbonQoSController.config.qosProfiles.greenGuaranteed.carbonThreshold }},
+      "cpuGuarantee": {{ .Values.katalyst.carbonQoSController.config.qosProfiles.greenGuaranteed.cpuGuarantee }},
+      "memoryGuarantee": {{ .Values.katalyst.carbonQoSController.config.qosProfiles.greenGuaranteed.memoryGuarantee }},
+      "priority": "{{ .Values.katalyst.carbonQoSController.config.qosProfiles.greenGuaranteed.priority }}",
+      "energyEfficiency": {
+        "pueThreshold": 1.5,
+        "powerCapEnabled": true,
+        "thermalManagement": true
+      },
+      "topologyAwareness": {
+        "numaAffinity": true,
+        "gpuLocality": true,
+        "networkOptimization": true
+      }
+    }
+  mixed-burstable.json: |
+    {
+      "name": "mixed-burstable",
+      "carbonThreshold": {{ .Values.katalyst.carbonQoSController.config.qosProfiles.mixedBurstable.carbonThreshold }},
+      "cpuGuarantee": {{ .Values.katalyst.carbonQoSController.config.qosProfiles.mixedBurstable.cpuGuarantee }},
+      "memoryGuarantee": {{ .Values.katalyst.carbonQoSController.config.qosProfiles.mixedBurstable.memoryGuarantee }},
+      "priority": "{{ .Values.katalyst.carbonQoSController.config.qosProfiles.mixedBurstable.priority }}",
+      "energyEfficiency": {
+        "pueThreshold": 2.0,
+        "powerCapEnabled": true,
+        "thermalManagement": false
+      },
+      "topologyAwareness": {
+        "numaAffinity": false,
+        "gpuLocality": true,
+        "networkOptimization": false
+      }
+    }
+  dirty-besteffort.json: |
+    {
+      "name": "dirty-besteffort",
+      "carbonThreshold": {{ .Values.katalyst.carbonQoSController.config.qosProfiles.dirtyBestEffort.carbonThreshold }},
+      "cpuGuarantee": {{ .Values.katalyst.carbonQoSController.config.qosProfiles.dirtyBestEffort.cpuGuarantee }},
+      "memoryGuarantee": {{ .Values.katalyst.carbonQoSController.config.qosProfiles.dirtyBestEffort.memoryGuarantee }},
+      "priority": "{{ .Values.katalyst.carbonQoSController.config.qosProfiles.dirtyBestEffort.priority }}",
+      "energyEfficiency": {
+        "pueThreshold": 3.0,
+        "powerCapEnabled": false,
+        "thermalManagement": false
+      },
+      "topologyAwareness": {
+        "numaAffinity": false,
+        "gpuLocality": false,
+        "networkOptimization": false
+      }
+    }
+{{- end }}

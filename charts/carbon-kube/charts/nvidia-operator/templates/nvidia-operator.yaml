@@ -1,0 +1,150 @@
+{{- if .Values.nvidia.enabled }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-operator
+  labels:
+    app.kubernetes.io/name: gpu-operator
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    carbon-kube.io/component: gpu-operator
+  annotations:
+    carbon-kube.io/gpu-monitoring: "enabled"
+    carbon-kube.io/dcgm-exporter: "enabled"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nvidia-operator
+  namespace: gpu-operator
+  labels:
+    app.kubernetes.io/name: nvidia-operator
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nvidia-operator
+  labels:
+    app.kubernetes.io/name: nvidia-operator
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "pods", "services", "endpoints", "persistentvolumeclaims", "events", "configmaps", "secrets"]
+  verbs: ["*"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "daemonsets", "replicasets", "statefulsets"]
+  verbs: ["*"]
+- apiGroups: ["monitoring.coreos.com"]
+  resources: ["servicemonitors"]
+  verbs: ["get", "create", "update", "patch"]
+- apiGroups: ["nvidia.com"]
+  resources: ["*"]
+  verbs: ["*"]
+- apiGroups: ["config.openshift.io"]
+  resources: ["clusterversions", "proxies"]
+  verbs: ["get", "list"]
+- apiGroups: ["security.openshift.io"]
+  resources: ["securitycontextconstraints"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["image.openshift.io"]
+  resources: ["imagestreams"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nvidia-operator
+  labels:
+    app.kubernetes.io/name: nvidia-operator
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nvidia-operator
+subjects:
+- kind: ServiceAccount
+  name: nvidia-operator
+  namespace: gpu-operator
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvidia-operator-config
+  namespace: gpu-operator
+  labels:
+    app.kubernetes.io/name: nvidia-operator
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    carbon-kube.io/component: gpu-config
+data:
+  # Carbon-aware GPU configuration
+  carbon-monitoring: "enabled"
+  dcgm-exporter: "enabled"
+  mig-strategy: "single"
+  power-monitoring: "enabled"
+  # DCGM metrics collection interval (seconds)
+  dcgm-interval: "10"
+  # Carbon intensity update interval (seconds)  
+  carbon-update-interval: "60"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dcgm-exporter
+  namespace: gpu-operator
+  labels:
+    app.kubernetes.io/name: dcgm-exporter
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    carbon-kube.io/component: dcgm-exporter
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9400"
+    prometheus.io/path: "/metrics"
+    carbon-kube.io/gpu-metrics: "enabled"
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: 9400
+    targetPort: 9400
+    protocol: TCP
+  selector:
+    app: dcgm-exporter
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dcgm-exporter
+  namespace: gpu-operator
+  labels:
+    app.kubernetes.io/name: dcgm-exporter
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    carbon-kube.io/component: gpu-monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dcgm-exporter
+  endpoints:
+  - port: metrics
+    interval: 10s
+    path: /metrics
+    honorLabels: true
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_namespace]
+      targetLabel: namespace
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: 'DCGM_FI_DEV_POWER_USAGE|DCGM_FI_DEV_GPU_UTIL|DCGM_FI_DEV_MEM_COPY_UTIL|DCGM_FI_DEV_GPU_TEMP|DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION'
+      action: keep
+{{- end }}

@@ -1,0 +1,298 @@
+# NVIDIA GPU Operator configuration for Carbon-Kube
+# Optimized for carbon-aware GPU scheduling with DCGM monitoring and MIG support
+
+nvidia:
+  enabled: true
+
+# GPU Operator configuration
+gpu-operator:
+  # Operator configuration
+  operator:
+    repository: nvcr.io/nvidia
+    image: gpu-operator
+    tag: v23.9.1
+    imagePullPolicy: IfNotPresent
+    
+    # Enable all GPU operator components
+    defaultRuntime: containerd
+    runtimeClass: nvidia
+    
+    # Resource limits for operator
+    resources:
+      limits:
+        cpu: 500m
+        memory: 350Mi
+      requests:
+        cpu: 200m
+        memory: 100Mi
+
+  # Driver configuration
+  driver:
+    enabled: true
+    repository: nvcr.io/nvidia
+    image: driver
+    version: "535.129.03"
+    imagePullPolicy: IfNotPresent
+    
+    # Enable DCGM for carbon monitoring
+    env:
+      - name: NVIDIA_DRIVER_CAPABILITIES
+        value: "compute,utility,graphics"
+      - name: DCGM_EXPORTER_LISTEN
+        value: "0.0.0.0:9400"
+    
+    # Driver resources
+    resources:
+      limits:
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+
+  # Container toolkit
+  toolkit:
+    enabled: true
+    repository: nvcr.io/nvidia/k8s
+    image: container-toolkit
+    version: v1.14.3-ubuntu20.04
+    imagePullPolicy: IfNotPresent
+    
+    # Toolkit resources
+    resources:
+      limits:
+        cpu: 200m
+        memory: 200Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+
+  # Device plugin configuration
+  devicePlugin:
+    enabled: true
+    repository: nvcr.io/nvidia
+    image: k8s-device-plugin
+    version: v0.14.3-ubi8
+    imagePullPolicy: IfNotPresent
+    
+    # Enable MIG support with single strategy
+    config:
+      name: "time-slicing-config"
+      create: true
+      data:
+        any: |-
+          version: v1
+          sharing:
+            timeSlicing:
+              resources:
+              - name: nvidia.com/gpu
+                replicas: 1
+          migStrategy: single
+          failOnInitError: true
+    
+    # Device plugin resources
+    resources:
+      limits:
+        cpu: 200m
+        memory: 200Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+
+  # DCGM Exporter - Critical for carbon monitoring
+  dcgmExporter:
+    enabled: true
+    repository: nvcr.io/nvidia/k8s
+    image: dcgm-exporter
+    version: 3.3.0-3.2.0-ubuntu20.04
+    imagePullPolicy: IfNotPresent
+    
+    # DCGM configuration for carbon metrics
+    config:
+      name: "dcgm-metrics-config"
+      create: true
+      data: |
+        # Carbon-aware GPU metrics configuration
+        DCGM_FI_DEV_SM_CLOCK,         gauge, GPU SM clock frequency (in MHz).
+        DCGM_FI_DEV_MEM_CLOCK,        gauge, GPU memory clock frequency (in MHz).
+        DCGM_FI_DEV_MEMORY_TEMP,      gauge, Memory temperature (in C).
+        DCGM_FI_DEV_GPU_TEMP,         gauge, GPU temperature (in C).
+        DCGM_FI_DEV_POWER_USAGE,      gauge, Power draw (in W).
+        DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION, counter, Total energy consumption since boot (in mJ).
+        DCGM_FI_DEV_GPU_UTIL,         gauge, GPU utilization (in %).
+        DCGM_FI_DEV_MEM_COPY_UTIL,    gauge, Memory utilization (in %).
+        DCGM_FI_DEV_FB_USED,          gauge, Framebuffer memory used (in MiB).
+        DCGM_FI_DEV_FB_FREE,          gauge, Framebuffer memory free (in MiB).
+        DCGM_FI_DEV_PCIE_TX_THROUGHPUT, gauge, PCIe TX throughput (in MB/s).
+        DCGM_FI_DEV_PCIE_RX_THROUGHPUT, gauge, PCIe RX throughput (in MB/s).
+        DCGM_FI_DEV_NVLINK_BANDWIDTH_TOTAL, gauge, Total NVLink bandwidth (in MB/s).
+        DCGM_FI_DEV_ECC_SBE_VOL_TOTAL, counter, Total single bit ECC errors.
+        DCGM_FI_DEV_ECC_DBE_VOL_TOTAL, counter, Total double bit ECC errors.
+    
+    # Service configuration for carbon monitoring
+    service:
+      enable: true
+      port: 9400
+      type: ClusterIP
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9400"
+        prometheus.io/path: "/metrics"
+    
+    # DCGM resources
+    resources:
+      limits:
+        cpu: 200m
+        memory: 200Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+    
+    # Environment variables for carbon monitoring
+    env:
+      - name: DCGM_EXPORTER_LISTEN
+        value: "0.0.0.0:9400"
+      - name: DCGM_EXPORTER_KUBERNETES
+        value: "true"
+      - name: DCGM_EXPORTER_COLLECTORS
+        value: "/etc/dcgm-exporter/dcp-metrics-included.csv"
+
+  # GPU Feature Discovery
+  gfd:
+    enabled: true
+    repository: nvcr.io/nvidia
+    image: gpu-feature-discovery
+    version: v0.8.2-ubi8
+    imagePullPolicy: IfNotPresent
+    
+    # GFD resources
+    resources:
+      limits:
+        cpu: 200m
+        memory: 200Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+
+  # MIG Manager for multi-instance GPU support
+  migManager:
+    enabled: true
+    repository: nvcr.io/nvidia/cloud-native
+    image: k8s-mig-manager
+    version: v0.5.5-ubuntu20.04
+    imagePullPolicy: IfNotPresent
+    
+    # MIG configuration for carbon optimization
+    config:
+      name: "mig-parted-config"
+      create: true
+      data:
+        config.yaml: |
+          version: v1
+          mig-configs:
+            all-1g.10gb:
+              - devices: all
+                mig-enabled: true
+                mig-devices:
+                  "1g.10gb": 7
+            all-2g.20gb:
+              - devices: all
+                mig-enabled: true
+                mig-devices:
+                  "2g.20gb": 3
+            all-3g.40gb:
+              - devices: all
+                mig-enabled: true
+                mig-devices:
+                  "3g.40gb": 2
+            all-7g.80gb:
+              - devices: all
+                mig-enabled: true
+                mig-devices:
+                  "7g.80gb": 1
+            all-disabled:
+              - devices: all
+                mig-enabled: false
+          # Default to single strategy for carbon evaluation
+          default-config: "all-disabled"
+    
+    # MIG Manager resources
+    resources:
+      limits:
+        cpu: 200m
+        memory: 200Mi
+      requests:
+        cpu: 100m
+        memory: 50Mi
+
+  # Node Feature Discovery
+  nfd:
+    enabled: true
+    
+  # Kata Manager (disabled for carbon evaluation)
+  kataManager:
+    enabled: false
+
+  # CC Manager (disabled for carbon evaluation)  
+  ccManager:
+    enabled: false
+
+  # Sandbox Device Plugin (disabled for carbon evaluation)
+  sandboxDevicePlugin:
+    enabled: false
+
+  # VFIO Manager (disabled for carbon evaluation)
+  vfioManager:
+    enabled: false
+
+  # Sandbox Workloads (disabled for carbon evaluation)
+  sandboxWorkloads:
+    enabled: false
+
+# Node selector for GPU nodes
+nodeSelector:
+  accelerator: nvidia
+
+# Tolerations for GPU nodes
+tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+
+# Pod Security Context
+podSecurityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+  fsGroup: 0
+
+# Security Context
+securityContext:
+  privileged: true
+  allowPrivilegeEscalation: true
+  readOnlyRootFilesystem: false
+  runAsNonRoot: false
+  runAsUser: 0
+  capabilities:
+    add:
+      - SYS_ADMIN
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: "nvidia-operator"
+
+# RBAC
+rbac:
+  create: true
+
+# Priority Class
+priorityClassName: "system-node-critical"
+
+# Image Pull Secrets
+imagePullSecrets: []
+
+# Annotations
+annotations:
+  carbon-kube.io/gpu-monitoring: "enabled"
+  carbon-kube.io/dcgm-exporter: "enabled"
+  carbon-kube.io/mig-strategy: "single"

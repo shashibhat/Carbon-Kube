@@ -1,0 +1,158 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bert-finetune-carbon-eval
+  namespace: carbon-kube
+  labels:
+    app: bert-finetune
+    workload-type: training
+    carbon-aware: "true"
+    evaluation: "gpu-carbon"
+  annotations:
+    carbon-kube.io/qos-profile: "ai-ml-optimized"
+    carbon-kube.io/migration-policy: "checkpointable"
+    carbon-kube.io/carbon-priority: "medium"
+    carbon-kube.io/sla-class: "batch"
+spec:
+  parallelism: 1
+  completions: 1
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: bert-finetune
+        workload-type: training
+        carbon-aware: "true"
+      annotations:
+        carbon-kube.io/checkpoint-interval: "300s"
+        carbon-kube.io/max-migration-time: "600s"
+    spec:
+      schedulerName: carbon-kube-scheduler
+      restartPolicy: Never
+      nodeSelector:
+        node.kubernetes.io/instance-type: "p4d.24xlarge"
+        carbon-kube.io/gpu-enabled: "true"
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "carbon-kube.io/gpu-workload"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      containers:
+      - name: bert-finetune
+        image: huggingface/transformers-pytorch-gpu:4.21.0
+        command:
+        - python
+        - -c
+        - |
+          import torch
+          import time
+          import os
+          from transformers import BertForSequenceClassification, BertTokenizer, Trainer, TrainingArguments
+          from datasets import Dataset
+          import numpy as np
+          
+          print(f"CUDA available: {torch.cuda.is_available()}")
+          print(f"GPU count: {torch.cuda.device_count()}")
+          
+          # Create synthetic dataset for fine-tuning
+          tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+          model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=2)
+          
+          # Generate synthetic training data
+          texts = [f"This is training sample {i} for BERT fine-tuning evaluation." for i in range(1000)]
+          labels = np.random.randint(0, 2, 1000).tolist()
+          
+          def tokenize_function(examples):
+              return tokenizer(examples['text'], truncation=True, padding=True, max_length=512)
+          
+          dataset = Dataset.from_dict({'text': texts, 'labels': labels})
+          tokenized_dataset = dataset.map(tokenize_function, batched=True)
+          
+          # Training arguments optimized for carbon evaluation
+          training_args = TrainingArguments(
+              output_dir='./results',
+              num_train_epochs=3,
+              per_device_train_batch_size=16,
+              per_device_eval_batch_size=16,
+              warmup_steps=100,
+              weight_decay=0.01,
+              logging_dir='./logs',
+              logging_steps=50,
+              save_steps=500,
+              evaluation_strategy="steps",
+              eval_steps=500,
+              load_best_model_at_end=True,
+              dataloader_num_workers=4,
+              fp16=True,  # Enable mixed precision for efficiency
+          )
+          
+          trainer = Trainer(
+              model=model,
+              args=training_args,
+              train_dataset=tokenized_dataset,
+              eval_dataset=tokenized_dataset.select(range(200)),  # Small eval set
+          )
+          
+          # Start training with carbon monitoring
+          start_time = time.time()
+          print("Starting BERT fine-tuning for carbon evaluation...")
+          
+          trainer.train()
+          
+          end_time = time.time()
+          duration = end_time - start_time
+          
+          print(f"Training completed in {duration:.2f} seconds")
+          print("BERT fine-tuning carbon evaluation finished successfully")
+        resources:
+          requests:
+            nvidia.com/gpu: "1"
+            cpu: "8"
+            memory: "32Gi"
+            ephemeral-storage: "50Gi"
+          limits:
+            nvidia.com/gpu: "1"
+            cpu: "16"
+            memory: "64Gi"
+            ephemeral-storage: "100Gi"
+        env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: TRANSFORMERS_CACHE
+          value: "/tmp/transformers_cache"
+        - name: HF_HOME
+          value: "/tmp/huggingface_cache"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "max_split_size_mb:512"
+        volumeMounts:
+        - name: tmp-storage
+          mountPath: /tmp
+        - name: shm
+          mountPath: /dev/shm
+      volumes:
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: "20Gi"
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: "8Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bert-finetune-metrics
+  namespace: carbon-kube
+  labels:
+    app: bert-finetune
+spec:
+  selector:
+    app: bert-finetune
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP

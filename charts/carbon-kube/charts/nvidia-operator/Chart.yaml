@@ -1,0 +1,27 @@
+apiVersion: v2
+name: nvidia-operator
+description: NVIDIA GPU Operator subchart for Carbon-Kube with DCGM and MIG support
+type: application
+version: 1.0.0
+appVersion: "v23.9.1"
+home: https://github.com/NVIDIA/gpu-operator
+sources:
+  - https://github.com/NVIDIA/gpu-operator
+maintainers:
+  - name: Carbon-Kube Team
+    email: team@carbon-kube.io
+keywords:
+  - nvidia
+  - gpu
+  - operator
+  - dcgm
+  - mig
+  - carbon-aware
+dependencies:
+  - name: gpu-operator
+    version: "v23.9.1"
+    repository: https://helm.ngc.nvidia.com/nvidia
+    condition: nvidia.enabled
+annotations:
+  category: GPU
+  licenses: Apache-2.0

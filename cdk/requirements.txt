@@ -1,0 +1,4 @@
+# AWS CDK Dependencies
+aws-cdk-lib>=2.90.0
+constructs>=10.0.0
+boto3>=1.28.0

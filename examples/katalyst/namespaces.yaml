@@ -1,0 +1,109 @@
+---
+# Production Namespace with Carbon Optimization
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    carbon.katalyst.io/environment: "production"
+    carbon.katalyst.io/optimization-policy: "production-optimization"
+    carbon.katalyst.io/carbon-budget: "high"
+    carbon.katalyst.io/priority: "high"
+  annotations:
+    carbon.katalyst.io/daily-budget: "100.0"  # kg CO2 per day
+    carbon.katalyst.io/monthly-budget: "3000.0"  # kg CO2 per month
+    carbon.katalyst.io/energy-efficiency: "high"
+    carbon.katalyst.io/migration-policy: "conservative"
+
+---
+# Development Namespace with Flexible Carbon Optimization
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: development
+  labels:
+    carbon.katalyst.io/environment: "development"
+    carbon.katalyst.io/optimization-policy: "development-optimization"
+    carbon.katalyst.io/carbon-budget: "low"
+    carbon.katalyst.io/priority: "medium"
+  annotations:
+    carbon.katalyst.io/daily-budget: "20.0"  # kg CO2 per day
+    carbon.katalyst.io/monthly-budget: "600.0"  # kg CO2 per month
+    carbon.katalyst.io/energy-efficiency: "medium"
+    carbon.katalyst.io/migration-policy: "aggressive"
+
+---
+# AI/ML Namespace with GPU-Optimized Carbon Management
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-ml
+  labels:
+    carbon.katalyst.io/environment: "ai-ml"
+    carbon.katalyst.io/optimization-policy: "aiml-optimization"
+    carbon.katalyst.io/carbon-budget: "very-high"
+    carbon.katalyst.io/priority: "high"
+    carbon.katalyst.io/workload-type: "gpu-intensive"
+  annotations:
+    carbon.katalyst.io/daily-budget: "500.0"  # kg CO2 per day
+    carbon.katalyst.io/monthly-budget: "15000.0"  # kg CO2 per month
+    carbon.katalyst.io/energy-efficiency: "high"
+    carbon.katalyst.io/migration-policy: "conservative"
+    carbon.katalyst.io/gpu-aware: "true"
+
+---
+# Batch Processing Namespace with Flexible Scheduling
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: batch-processing
+  labels:
+    carbon.katalyst.io/environment: "batch"
+    carbon.katalyst.io/optimization-policy: "batch-optimization"
+    carbon.katalyst.io/carbon-budget: "medium"
+    carbon.katalyst.io/priority: "low"
+    carbon.katalyst.io/scheduling: "flexible"
+  annotations:
+    carbon.katalyst.io/daily-budget: "50.0"  # kg CO2 per day
+    carbon.katalyst.io/monthly-budget: "1500.0"  # kg CO2 per month
+    carbon.katalyst.io/energy-efficiency: "medium"
+    carbon.katalyst.io/migration-policy: "aggressive"
+    carbon.katalyst.io/schedule-flexibility: "high"
+
+---
+# Edge Computing Namespace with Location-Aware Optimization
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edge-computing
+  labels:
+    carbon.katalyst.io/environment: "edge"
+    carbon.katalyst.io/optimization-policy: "edge-optimization"
+    carbon.katalyst.io/carbon-budget: "medium"
+    carbon.katalyst.io/priority: "medium"
+    carbon.katalyst.io/location: "distributed"
+  annotations:
+    carbon.katalyst.io/daily-budget: "30.0"  # kg CO2 per day
+    carbon.katalyst.io/monthly-budget: "900.0"  # kg CO2 per month
+    carbon.katalyst.io/energy-efficiency: "high"
+    carbon.katalyst.io/migration-policy: "disabled"
+    carbon.katalyst.io/edge-optimized: "true"
+
+---
+# Monitoring Namespace for Carbon-Kube and Katalyst
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    carbon.katalyst.io/environment: "monitoring"
+    carbon.katalyst.io/optimization-policy: "production-optimization"
+    carbon.katalyst.io/carbon-budget: "low"
+    carbon.katalyst.io/priority: "high"
+    carbon.katalyst.io/system: "true"
+  annotations:
+    carbon.katalyst.io/daily-budget: "10.0"  # kg CO2 per day
+    carbon.katalyst.io/monthly-budget: "300.0"  # kg CO2 per month
+    carbon.katalyst.io/energy-efficiency: "high"
+    carbon.katalyst.io/migration-policy: "disabled"
+    carbon.katalyst.io/exclude-from-optimization: "true"

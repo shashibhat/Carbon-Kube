@@ -1,0 +1,166 @@
+{{- if and .Values.katalyst.enabled .Values.katalyst.enhancedScheduler.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "carbon-kube.fullname" . }}-enhanced-scheduler
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: enhanced-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "carbon-kube.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: enhanced-scheduler
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "carbon-kube.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: enhanced-scheduler
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.katalyst.enhancedScheduler.serviceAccount.name | default (printf "%s-enhanced-scheduler" (include "carbon-kube.fullname" .)) }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: enhanced-scheduler
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.katalyst.enhancedScheduler.image.repository }}:{{ .Values.katalyst.enhancedScheduler.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: SCHEDULER_NAME
+              value: {{ .Values.katalyst.enhancedScheduler.config.schedulerName | quote }}
+            - name: CARBON_WEIGHT
+              value: {{ .Values.katalyst.enhancedScheduler.config.carbonWeight | quote }}
+            - name: QOS_WEIGHT
+              value: {{ .Values.katalyst.enhancedScheduler.config.qosWeight | quote }}
+            - name: TOPOLOGY_WEIGHT
+              value: {{ .Values.katalyst.enhancedScheduler.config.topologyWeight | quote }}
+            - name: ENERGY_WEIGHT
+              value: {{ .Values.katalyst.enhancedScheduler.config.energyWeight | quote }}
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- with .Values.extraEnvVars }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            {{- if .Values.livenessProbe.enabled }}
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+            {{- end }}
+          readinessProbe:
+            {{- if .Values.readinessProbe.enabled }}
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.katalyst.enhancedScheduler.resources | nindent 12 }}
+          volumeMounts:
+            - name: scheduler-config
+              mountPath: /etc/scheduler
+              readOnly: true
+            - name: kubeconfig
+              mountPath: /etc/kubeconfig
+              readOnly: true
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: scheduler-config
+          configMap:
+            name: {{ include "carbon-kube.fullname" . }}-scheduler-config
+        - name: kubeconfig
+          secret:
+            secretName: {{ include "carbon-kube.fullname" . }}-scheduler-kubeconfig
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.katalyst.enhancedScheduler.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.katalyst.enhancedScheduler.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.katalyst.enhancedScheduler.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "carbon-kube.fullname" . }}-scheduler-config
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: enhanced-scheduler
+data:
+  config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1beta3
+    kind: KubeSchedulerConfiguration
+    profiles:
+    - schedulerName: {{ .Values.katalyst.enhancedScheduler.config.schedulerName }}
+      plugins:
+        filter:
+          enabled:
+          - name: CarbonKatalystPlugin
+        score:
+          enabled:
+          - name: CarbonKatalystPlugin
+      pluginConfig:
+      - name: CarbonKatalystPlugin
+        args:
+          carbonWeight: {{ .Values.katalyst.enhancedScheduler.config.carbonWeight }}
+          qosWeight: {{ .Values.katalyst.enhancedScheduler.config.qosWeight }}
+          topologyWeight: {{ .Values.katalyst.enhancedScheduler.config.topologyWeight }}
+          energyWeight: {{ .Values.katalyst.enhancedScheduler.config.energyWeight }}
+          carbonThresholds:
+            green: {{ .Values.katalyst.enhancedScheduler.config.carbonThresholds.green }}
+            mixed: {{ .Values.katalyst.enhancedScheduler.config.carbonThresholds.mixed }}
+            dirty: {{ .Values.katalyst.enhancedScheduler.config.carbonThresholds.dirty }}
+          topologyAwareness:
+            enabled: {{ .Values.katalyst.enhancedScheduler.config.topologyAwareness.enabled }}
+            numaAffinity: {{ .Values.katalyst.enhancedScheduler.config.topologyAwareness.numaAffinity }}
+            gpuLocality: {{ .Values.katalyst.enhancedScheduler.config.topologyAwareness.gpuLocality }}
+            networkTopology: {{ .Values.katalyst.enhancedScheduler.config.topologyAwareness.networkTopology }}
+          energyEfficiency:
+            enabled: {{ .Values.katalyst.enhancedScheduler.config.energyEfficiency.enabled }}
+            pueThreshold: {{ .Values.katalyst.enhancedScheduler.config.energyEfficiency.pueThreshold }}
+            powerCapEnabled: {{ .Values.katalyst.enhancedScheduler.config.energyEfficiency.powerCapEnabled }}
+    leaderElection:
+      leaderElect: true
+      resourceName: {{ .Values.katalyst.enhancedScheduler.config.schedulerName }}
+      resourceNamespace: {{ .Release.Namespace }}
+{{- end }}

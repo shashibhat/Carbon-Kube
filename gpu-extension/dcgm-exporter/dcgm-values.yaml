@@ -1,0 +1,226 @@
+# DCGM Exporter configuration for Carbon-Kube GPU telemetry
+# This configuration enables comprehensive GPU metrics collection for carbon-aware scheduling
+
+image:
+  repository: nvcr.io/nvidia/k8s/dcgm-exporter
+  tag: 3.3.5-3.4.0-ubuntu22.04
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  enable: true
+  type: ClusterIP
+  port: 9400
+  targetPort: 9400
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9400"
+    prometheus.io/path: "/metrics"
+
+# ServiceMonitor for Prometheus Operator
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: 30s
+  scrapeTimeout: 10s
+  labels:
+    app: dcgm-exporter
+    carbon-kube: gpu-telemetry
+  additionalLabels:
+    prometheus: kube-prometheus
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Node selection for GPU nodes only
+nodeSelector:
+  nvidia.com/gpu.present: "true"
+
+# Tolerations for GPU nodes
+tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+  - key: carbon-kube.io/gpu-node
+    operator: Exists
+    effect: NoSchedule
+
+# Security context
+securityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+  capabilities:
+    add: ["SYS_ADMIN"]
+
+# DCGM configuration
+arguments:
+  - --web.listen-address=:9400
+  - --web.telemetry-path=/metrics
+  - --collectors=/etc/dcgm-exporter/dcp-metrics-included.csv
+  - --kubernetes-gpu-id-type=device-name
+  - --remote-hostengine-info=localhost:5555
+
+# Environment variables
+env:
+  - name: DCGM_EXPORTER_LISTEN
+    value: ":9400"
+  - name: DCGM_EXPORTER_KUBERNETES_GPU_ID_TYPE
+    value: "device-name"
+  - name: NVIDIA_VISIBLE_DEVICES
+    value: "all"
+  - name: NVIDIA_DRIVER_CAPABILITIES
+    value: "compute,utility"
+
+# Volume mounts for DCGM socket and configuration
+volumeMounts:
+  - name: dcgm-socket
+    mountPath: /var/lib/kubelet/pod-resources
+    readOnly: true
+  - name: proc
+    mountPath: /host/proc
+    readOnly: true
+  - name: sys
+    mountPath: /host/sys
+    readOnly: true
+  - name: dcgm-config
+    mountPath: /etc/dcgm-exporter
+    readOnly: true
+
+volumes:
+  - name: dcgm-socket
+    hostPath:
+      path: /var/lib/kubelet/pod-resources
+      type: Directory
+  - name: proc
+    hostPath:
+      path: /proc
+      type: Directory
+  - name: sys
+    hostPath:
+      path: /sys
+      type: Directory
+  - name: dcgm-config
+    configMap:
+      name: dcgm-metrics-config
+
+# Affinity rules
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: nvidia.com/gpu.present
+          operator: In
+          values: ["true"]
+        - key: node-role.kubernetes.io/control-plane
+          operator: DoesNotExist
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Horizontal Pod Autoscaler (disabled for DaemonSet)
+autoscaling:
+  enabled: false
+
+# Monitoring and alerting
+monitoring:
+  enabled: true
+  prometheusRule:
+    enabled: true
+    namespace: monitoring
+    labels:
+      app: dcgm-exporter
+      carbon-kube: gpu-monitoring
+    rules:
+      - alert: GPUHighPowerConsumption
+        expr: DCGM_FI_DEV_POWER_USAGE > 300
+        for: 5m
+        labels:
+          severity: warning
+          component: gpu
+        annotations:
+          summary: "GPU {{ $labels.gpu }} on node {{ $labels.instance }} has high power consumption"
+          description: "GPU power usage is {{ $value }}W, which is above the 300W threshold"
+      
+      - alert: GPUHighTemperature
+        expr: DCGM_FI_DEV_GPU_TEMP > 85
+        for: 2m
+        labels:
+          severity: critical
+          component: gpu
+        annotations:
+          summary: "GPU {{ $labels.gpu }} on node {{ $labels.instance }} is overheating"
+          description: "GPU temperature is {{ $value }}°C, which is above the 85°C threshold"
+      
+      - alert: GPUMemoryUtilizationHigh
+        expr: DCGM_FI_DEV_MEM_COPY_UTIL > 90
+        for: 10m
+        labels:
+          severity: warning
+          component: gpu
+        annotations:
+          summary: "GPU {{ $labels.gpu }} memory utilization is high"
+          description: "GPU memory utilization is {{ $value }}%, consider workload optimization"
+      
+      - alert: GPUCarbonIntensityHigh
+        expr: gpu_carbon_intensity_gco2_per_kwh > 500
+        for: 15m
+        labels:
+          severity: warning
+          component: carbon
+        annotations:
+          summary: "High carbon intensity detected in zone {{ $labels.zone }}"
+          description: "Carbon intensity is {{ $value }} gCO2/kWh, consider migrating workloads"
+
+# Custom metrics configuration
+customMetrics:
+  enabled: true
+  configMapName: dcgm-metrics-config
+  
+# Grafana dashboard
+grafanaDashboard:
+  enabled: true
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    carbon-kube: gpu-dashboard
+
+# Network policy
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: monitoring
+      ports:
+      - protocol: TCP
+        port: 9400
+  egress:
+    - to: []
+      ports:
+      - protocol: TCP
+        port: 5555  # DCGM hostengine
+      - protocol: UDP
+        port: 53    # DNS
+
+# Logging configuration
+logging:
+  level: info
+  format: json
+  
+# Carbon-specific annotations
+podAnnotations:
+  carbon-kube.io/component: "gpu-telemetry"
+  carbon-kube.io/version: "v1.0.0"
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9400"
+  prometheus.io/path: "/metrics"

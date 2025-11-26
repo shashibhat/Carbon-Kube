@@ -1,0 +1,121 @@
+---
+# Green QoS Profile - For low carbon intensity periods
+apiVersion: carbon.katalyst.io/v1alpha1
+kind: CarbonQoSProfile
+metadata:
+  name: green-guaranteed
+  namespace: carbon-kube
+  labels:
+    carbon.katalyst.io/profile-type: "green"
+    carbon.katalyst.io/priority: "high"
+spec:
+  carbonThreshold: 100.0  # gCO2/kWh
+  cpuGuarantee: 0.8
+  memoryGuarantee: 0.8
+  priority: high
+  energyEfficiency:
+    pueThreshold: 1.2
+    powerCapEnabled: true
+    thermalManagement: true
+  topologyAwareness:
+    numaAffinity: true
+    gpuLocality: true
+    networkOptimization: true
+
+---
+# Mixed QoS Profile - For moderate carbon intensity periods
+apiVersion: carbon.katalyst.io/v1alpha1
+kind: CarbonQoSProfile
+metadata:
+  name: mixed-burstable
+  namespace: carbon-kube
+  labels:
+    carbon.katalyst.io/profile-type: "mixed"
+    carbon.katalyst.io/priority: "medium"
+spec:
+  carbonThreshold: 300.0  # gCO2/kWh
+  cpuGuarantee: 0.5
+  memoryGuarantee: 0.6
+  priority: medium
+  energyEfficiency:
+    pueThreshold: 1.5
+    powerCapEnabled: true
+    thermalManagement: false
+  topologyAwareness:
+    numaAffinity: false
+    gpuLocality: true
+    networkOptimization: false
+
+---
+# Dirty QoS Profile - For high carbon intensity periods
+apiVersion: carbon.katalyst.io/v1alpha1
+kind: CarbonQoSProfile
+metadata:
+  name: dirty-besteffort
+  namespace: carbon-kube
+  labels:
+    carbon.katalyst.io/profile-type: "dirty"
+    carbon.katalyst.io/priority: "low"
+spec:
+  carbonThreshold: 500.0  # gCO2/kWh
+  cpuGuarantee: 0.2
+  memoryGuarantee: 0.3
+  priority: low
+  energyEfficiency:
+    pueThreshold: 2.0
+    powerCapEnabled: false
+    thermalManagement: false
+  topologyAwareness:
+    numaAffinity: false
+    gpuLocality: false
+    networkOptimization: false
+
+---
+# AI/ML Workload QoS Profile - For GPU-intensive workloads
+apiVersion: carbon.katalyst.io/v1alpha1
+kind: CarbonQoSProfile
+metadata:
+  name: ai-ml-optimized
+  namespace: carbon-kube
+  labels:
+    carbon.katalyst.io/profile-type: "ai-ml"
+    carbon.katalyst.io/priority: "high"
+    carbon.katalyst.io/workload-type: "gpu-intensive"
+spec:
+  carbonThreshold: 200.0  # gCO2/kWh
+  cpuGuarantee: 0.6
+  memoryGuarantee: 0.7
+  priority: high
+  energyEfficiency:
+    pueThreshold: 1.3
+    powerCapEnabled: true
+    thermalManagement: true
+  topologyAwareness:
+    numaAffinity: true
+    gpuLocality: true
+    networkOptimization: true
+
+---
+# Batch Processing QoS Profile - For batch workloads that can be delayed
+apiVersion: carbon.katalyst.io/v1alpha1
+kind: CarbonQoSProfile
+metadata:
+  name: batch-flexible
+  namespace: carbon-kube
+  labels:
+    carbon.katalyst.io/profile-type: "batch"
+    carbon.katalyst.io/priority: "low"
+    carbon.katalyst.io/scheduling: "flexible"
+spec:
+  carbonThreshold: 150.0  # gCO2/kWh
+  cpuGuarantee: 0.3
+  memoryGuarantee: 0.4
+  priority: low
+  energyEfficiency:
+    pueThreshold: 1.8
+    powerCapEnabled: false
+    thermalManagement: false
+  topologyAwareness:
+    numaAffinity: false
+    gpuLocality: false
+    networkOptimization: false

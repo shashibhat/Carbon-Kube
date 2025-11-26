@@ -1,0 +1,195 @@
+# GPU Operator Helm Values for Carbon-Kube EcoGPU Extension
+# Optimized for carbon-aware GPU scheduling with DCGM telemetry
+
+operator:
+  defaultRuntime: containerd
+  runtimeClass: nvidia
+  
+  # Enable all required components for carbon monitoring
+  initContainer:
+    image: nvcr.io/nvidia/cuda
+    repository: nvcr.io/nvidia/cuda
+    version: "12.2.2-devel-ubuntu20.04"
+
+# NVIDIA Device Plugin Configuration
+devicePlugin:
+  enabled: true
+  
+  # Enable resource discovery for carbon scheduling
+  config:
+    name: time-slicing-config
+    data:
+      any: |-
+        version: v1
+        flags:
+          migStrategy: "single"
+          failOnInitError: true
+        sharing:
+          timeSlicing:
+            resources:
+            - name: nvidia.com/gpu
+              replicas: 4  # Allow 4 time-sliced containers per GPU
+            - name: nvidia.com/mig-1g.5gb
+              replicas: 2
+            - name: nvidia.com/mig-2g.10gb  
+              replicas: 1
+
+# DCGM Exporter for GPU telemetry and carbon monitoring
+dcgmExporter:
+  enabled: true
+  
+  # Enhanced metrics for carbon calculations
+  config:
+    name: dcgm-metrics-config
+    data: |
+      # GPU Power and Energy Metrics for Carbon Calculation
+      DCGM_FI_DEV_POWER_USAGE,         gauge, GPU Power Usage (W)
+      DCGM_FI_DEV_GPU_UTIL,            gauge, GPU Utilization (%)
+      DCGM_FI_DEV_MEM_COPY_UTIL,       gauge, GPU Memory Utilization (%)
+      DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION, counter, Total Energy Consumption (mJ)
+      
+      # Temperature for thermal-aware scheduling
+      DCGM_FI_DEV_GPU_TEMP,            gauge, GPU Temperature (C)
+      DCGM_FI_DEV_MEMORY_TEMP,         gauge, GPU Memory Temperature (C)
+      
+      # Performance metrics for SLA monitoring
+      DCGM_FI_DEV_SM_CLOCK,            gauge, SM Clock (MHz)
+      DCGM_FI_DEV_MEM_CLOCK,           gauge, Memory Clock (MHz)
+      DCGM_FI_DEV_PCIE_REPLAY_COUNTER, counter, PCIe Replay Counter
+      
+      # MIG-specific metrics
+      DCGM_FI_DEV_MIG_MODE,            gauge, MIG Mode Status
+      DCGM_FI_PROF_GR_ENGINE_ACTIVE,   gauge, Graphics Engine Active (%)
+      
+      # Carbon-specific derived metrics
+      DCGM_FI_DEV_POWER_VIOLATION,     gauge, Power Limit Violation Time (us)
+      DCGM_FI_DEV_THERMAL_VIOLATION,   gauge, Thermal Violation Time (us)
+
+  # Service configuration for Prometheus scraping
+  service:
+    enable: true
+    port: 9400
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9400"
+      prometheus.io/path: "/metrics"
+      carbon-kube.io/gpu-telemetry: "enabled"
+
+# Node Feature Discovery for GPU labeling
+nfd:
+  enabled: true
+  
+  # GPU-specific node labels for carbon scheduling
+  worker:
+    config:
+      sources:
+        pci:
+          deviceClassWhitelist:
+            - "0300"  # GPU devices
+            - "0302"  # 3D controllers
+        custom:
+          - name: "nvidia.com/gpu.product"
+            matchOn:
+              - pciId:
+                  vendor: ["10de"]  # NVIDIA vendor ID
+          - name: "nvidia.com/gpu.memory"
+            matchOn:
+              - pciId:
+                  vendor: ["10de"]
+          - name: "carbon-kube.io/gpu-power-cap"
+            matchOn:
+              - pciId:
+                  vendor: ["10de"]
+
+# GPU Feature Discovery
+gfd:
+  enabled: true
+  
+  # Carbon-aware GPU labeling
+  config:
+    name: gpu-feature-discovery-config
+    data: |
+      version: v1
+      flags:
+        mig-strategy: "single"
+        fail-on-init-error: true
+        no-timestamp: false
+        sleep-interval: 60s
+        output-file: /etc/kubernetes/node-feature-discovery/features.d/gfd
+      
+      # Carbon optimization labels
+      sharing:
+        timeSlicing:
+          renameByDefault: false
+          failRequestsGreaterThanOne: false
+          resources:
+          - name: nvidia.com/gpu
+            replicas: 4
+
+# MIG Manager for fractional GPU scheduling
+migManager:
+  enabled: true
+  
+  # MIG configuration for carbon-efficient GPU sharing
+  config:
+    name: mig-parted-config
+    data: |
+      version: v1
+      mig-configs:
+        all-1g.5gb:
+          - devices: all
+            mig-enabled: true
+            mig-devices:
+              1g.5gb: 7
+        all-2g.10gb:
+          - devices: all  
+            mig-enabled: true
+            mig-devices:
+              2g.10gb: 3
+        all-3g.20gb:
+          - devices: all
+            mig-enabled: true
+            mig-devices:
+              3g.20gb: 2
+        all-7g.40gb:
+          - devices: all
+            mig-enabled: true
+            mig-devices:
+              7g.40gb: 1
+
+# Container Toolkit
+toolkit:
+  enabled: true
+  version: v1.14.3-centos7
+
+# Driver configuration
+driver:
+  enabled: true
+  version: "535.129.03"
+  
+  # Enable persistence mode for consistent power monitoring
+  env:
+    - name: NVIDIA_DRIVER_CAPABILITIES
+      value: "compute,utility,graphics"
+    - name: NVIDIA_REQUIRE_CUDA
+      value: "cuda>=11.0"
+
+# Validator for GPU setup verification
+validator:
+  plugin:
+    env:
+      - name: WITH_WORKLOAD
+        value: "true"
+
+# Node labels for carbon-aware scheduling
+nodeSelector:
+  carbon-kube.io/gpu-enabled: "true"
+
+# Tolerations for GPU nodes
+tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+  - key: carbon-kube.io/gpu-node
+    operator: Exists
+    effect: NoSchedule

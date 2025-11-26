@@ -1,0 +1,247 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-inference-carbon-eval
+  namespace: carbon-kube
+  labels:
+    app: llama-inference
+    workload-type: inference
+    carbon-aware: "true"
+    evaluation: "gpu-carbon"
+  annotations:
+    carbon-kube.io/qos-profile: "ai-ml-optimized"
+    carbon-kube.io/migration-policy: "stateless"
+    carbon-kube.io/carbon-priority: "high"
+    carbon-kube.io/sla-class: "interactive"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llama-inference
+  template:
+    metadata:
+      labels:
+        app: llama-inference
+        workload-type: inference
+        carbon-aware: "true"
+      annotations:
+        carbon-kube.io/checkpoint-interval: "0s"  # Stateless inference
+        carbon-kube.io/max-migration-time: "30s"
+    spec:
+      schedulerName: carbon-kube-scheduler
+      nodeSelector:
+        node.kubernetes.io/instance-type: "p4d.24xlarge"
+        carbon-kube.io/gpu-enabled: "true"
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "carbon-kube.io/gpu-workload"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      containers:
+      - name: llama-inference
+        image: vllm/vllm-openai:latest
+        command:
+        - python
+        - -m
+        - vllm.entrypoints.openai.api_server
+        args:
+        - --model=microsoft/DialoGPT-medium  # Smaller model for evaluation
+        - --host=0.0.0.0
+        - --port=8000
+        - --tensor-parallel-size=1
+        - --gpu-memory-utilization=0.8
+        - --max-model-len=2048
+        - --dtype=float16
+        - --enable-chunked-prefill
+        - --max-num-batched-tokens=4096
+        - --max-num-seqs=64
+        ports:
+        - containerPort: 8000
+          name: api
+        - containerPort: 8080
+          name: metrics
+        resources:
+          requests:
+            nvidia.com/gpu: "1"
+            cpu: "8"
+            memory: "32Gi"
+            ephemeral-storage: "50Gi"
+          limits:
+            nvidia.com/gpu: "1"
+            cpu: "16"
+            memory: "64Gi"
+            ephemeral-storage: "100Gi"
+        env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: VLLM_WORKER_MULTIPROC_METHOD
+          value: "spawn"
+        - name: VLLM_LOGGING_LEVEL
+          value: "INFO"
+        - name: HF_HOME
+          value: "/tmp/huggingface_cache"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+        volumeMounts:
+        - name: tmp-storage
+          mountPath: /tmp
+        - name: shm
+          mountPath: /dev/shm
+      - name: load-generator
+        image: python:3.9-slim
+        command:
+        - python
+        - -c
+        - |
+          import requests
+          import time
+          import json
+          import threading
+          import random
+          from concurrent.futures import ThreadPoolExecutor
+          
+          def generate_request():
+              prompts = [
+                  "Explain the concept of carbon footprint in data centers.",
+                  "What are the benefits of renewable energy for computing?",
+                  "How can machine learning help reduce emissions?",
+                  "Describe sustainable computing practices.",
+                  "What is the role of GPU efficiency in green computing?"
+              ]
+              
+              payload = {
+                  "model": "microsoft/DialoGPT-medium",
+                  "messages": [
+                      {"role": "user", "content": random.choice(prompts)}
+                  ],
+                  "max_tokens": 150,
+                  "temperature": 0.7
+              }
+              
+              try:
+                  response = requests.post(
+                      "http://localhost:8000/v1/chat/completions",
+                      json=payload,
+                      timeout=30
+                  )
+                  return response.status_code == 200
+              except Exception as e:
+                  print(f"Request failed: {e}")
+                  return False
+          
+          def load_test():
+              print("Starting Llama inference load test for carbon evaluation...")
+              
+              # Wait for vLLM to be ready
+              for i in range(60):
+                  try:
+                      response = requests.get("http://localhost:8000/health", timeout=5)
+                      if response.status_code == 200:
+                          print("vLLM server is ready!")
+                          break
+                  except:
+                      pass
+                  time.sleep(5)
+              else:
+                  print("vLLM server not ready, continuing anyway...")
+              
+              # Generate load for 30 minutes
+              end_time = time.time() + 1800  # 30 minutes
+              successful_requests = 0
+              total_requests = 0
+              
+              with ThreadPoolExecutor(max_workers=4) as executor:
+                  while time.time() < end_time:
+                      futures = []
+                      # Submit 4 concurrent requests
+                      for _ in range(4):
+                          futures.append(executor.submit(generate_request))
+                      
+                      # Wait for completion
+                      for future in futures:
+                          if future.result():
+                              successful_requests += 1
+                          total_requests += 1
+                      
+                      # Log progress every 100 requests
+                      if total_requests % 100 == 0:
+                          success_rate = (successful_requests / total_requests) * 100
+                          print(f"Processed {total_requests} requests, success rate: {success_rate:.1f}%")
+                      
+                      # Brief pause between batches
+                      time.sleep(2)
+              
+              print(f"Load test completed: {successful_requests}/{total_requests} successful requests")
+          
+          load_test()
+        resources:
+          requests:
+            cpu: "1"
+            memory: "1Gi"
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+      volumes:
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: "20Gi"
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: "8Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama-inference-service
+  namespace: carbon-kube
+  labels:
+    app: llama-inference
+spec:
+  selector:
+    app: llama-inference
+  ports:
+  - name: api
+    port: 8000
+    targetPort: 8000
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llama-inference-ingress
+  namespace: carbon-kube
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  rules:
+  - host: llama-inference.carbon-kube.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: llama-inference-service
+            port:
+              number: 8000

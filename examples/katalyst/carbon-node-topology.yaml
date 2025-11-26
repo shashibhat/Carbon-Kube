@@ -1,0 +1,183 @@
+---
+# Example Carbon Node Topology for a high-performance compute node
+apiVersion: carbon.katalyst.io/v1alpha1
+kind: CarbonNodeTopology
+metadata:
+  name: node-compute-01
+  labels:
+    carbon.katalyst.io/node-type: "compute"
+    carbon.katalyst.io/region: "us-west-2"
+    carbon.katalyst.io/zone: "us-west-2a"
+spec:
+  nodeName: "ip-10-0-1-100.us-west-2.compute.internal"
+  carbonIntensity: 120.5  # gCO2/kWh
+  energySource:
+    renewable: 0.65
+    coal: 0.15
+    gas: 0.15
+    nuclear: 0.05
+  topology:
+    numaNodes:
+    - id: 0
+      cpus: [0, 1, 2, 3, 4, 5, 6, 7]
+      memory: "32Gi"
+      powerZone: 0
+    - id: 1
+      cpus: [8, 9, 10, 11, 12, 13, 14, 15]
+      memory: "32Gi"
+      powerZone: 1
+    gpus:
+    - id: "GPU-0"
+      model: "NVIDIA A100"
+      powerConsumption: 400.0  # watts
+      numaNode: 0
+    - id: "GPU-1"
+      model: "NVIDIA A100"
+      powerConsumption: 400.0  # watts
+      numaNode: 1
+    networkDevices:
+    - name: "eth0"
+      bandwidth: "10Gbps"
+      powerConsumption: 15.0  # watts
+    - name: "ib0"
+      bandwidth: "100Gbps"
+      powerConsumption: 25.0  # watts
+  powerProfile:
+    maxPower: 1200.0  # watts
+    idlePower: 200.0   # watts
+    pue: 1.2
+    thermalDesignPower: 1000.0  # watts
+
+---
+# Example Carbon Node Topology for a general-purpose node
+apiVersion: carbon.katalyst.io/v1alpha1
+kind: CarbonNodeTopology
+metadata:
+  name: node-general-01
+  labels:
+    carbon.katalyst.io/node-type: "general"
+    carbon.katalyst.io/region: "us-west-2"
+    carbon.katalyst.io/zone: "us-west-2b"
+spec:
+  nodeName: "ip-10-0-2-100.us-west-2.compute.internal"
+  carbonIntensity: 145.2  # gCO2/kWh
+  energySource:
+    renewable: 0.55
+    coal: 0.25
+    gas: 0.15
+    nuclear: 0.05
+  topology:
+    numaNodes:
+    - id: 0
+      cpus: [0, 1, 2, 3]
+      memory: "16Gi"
+      powerZone: 0
+    - id: 1
+      cpus: [4, 5, 6, 7]
+      memory: "16Gi"
+      powerZone: 0
+    networkDevices:
+    - name: "eth0"
+      bandwidth: "1Gbps"
+      powerConsumption: 5.0  # watts
+  powerProfile:
+    maxPower: 300.0   # watts
+    idlePower: 50.0   # watts
+    pue: 1.4
+    thermalDesignPower: 250.0  # watts
+
+---
+# Example Carbon Node Topology for an edge node with high carbon intensity
+apiVersion: carbon.katalyst.io/v1alpha1
+kind: CarbonNodeTopology
+metadata:
+  name: node-edge-01
+  labels:
+    carbon.katalyst.io/node-type: "edge"
+    carbon.katalyst.io/region: "us-east-1"
+    carbon.katalyst.io/zone: "us-east-1a"
+spec:
+  nodeName: "ip-10-1-1-100.us-east-1.compute.internal"
+  carbonIntensity: 420.8  # gCO2/kWh (high carbon intensity)
+  energySource:
+    renewable: 0.25
+    coal: 0.45
+    gas: 0.25
+    nuclear: 0.05
+  topology:
+    numaNodes:
+    - id: 0
+      cpus: [0, 1]
+      memory: "8Gi"
+      powerZone: 0
+    - id: 1
+      cpus: [2, 3]
+      memory: "8Gi"
+      powerZone: 0
+    networkDevices:
+    - name: "eth0"
+      bandwidth: "100Mbps"
+      powerConsumption: 2.0  # watts
+  powerProfile:
+    maxPower: 150.0   # watts
+    idlePower: 25.0   # watts
+    pue: 1.8
+    thermalDesignPower: 120.0  # watts
+
+---
+# Example Carbon Node Topology for a green data center node
+apiVersion: carbon.katalyst.io/v1alpha1
+kind: CarbonNodeTopology
+metadata:
+  name: node-green-01
+  labels:
+    carbon.katalyst.io/node-type: "green"
+    carbon.katalyst.io/region: "us-west-1"
+    carbon.katalyst.io/zone: "us-west-1a"
+spec:
+  nodeName: "ip-10-2-1-100.us-west-1.compute.internal"
+  carbonIntensity: 45.3   # gCO2/kWh (very low carbon intensity)
+  energySource:
+    renewable: 0.95
+    coal: 0.0
+    gas: 0.02
+    nuclear: 0.03
+  topology:
+    numaNodes:
+    - id: 0
+      cpus: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+      memory: "64Gi"
+      powerZone: 0
+    - id: 1
+      cpus: [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+      memory: "64Gi"
+      powerZone: 1
+    gpus:
+    - id: "GPU-0"
+      model: "NVIDIA H100"
+      powerConsumption: 700.0  # watts
+      numaNode: 0
+    - id: "GPU-1"
+      model: "NVIDIA H100"
+      powerConsumption: 700.0  # watts
+      numaNode: 0
+    - id: "GPU-2"
+      model: "NVIDIA H100"
+      powerConsumption: 700.0  # watts
+      numaNode: 1
+    - id: "GPU-3"
+      model: "NVIDIA H100"
+      powerConsumption: 700.0  # watts
+      numaNode: 1
+    networkDevices:
+    - name: "eth0"
+      bandwidth: "25Gbps"
+      powerConsumption: 20.0  # watts
+    - name: "ib0"
+      bandwidth: "200Gbps"
+      powerConsumption: 40.0  # watts
+  powerProfile:
+    maxPower: 3500.0  # watts
+    idlePower: 400.0  # watts
+    pue: 1.1          # Very efficient green data center
+    thermalDesignPower: 3200.0  # watts
