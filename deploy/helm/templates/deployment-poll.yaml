@@ -1,3 +1,4 @@
+{{- if .Values.poller.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12,6 +13,7 @@ spec:
       labels:
         app: carbon-kube-poller
     spec:
+      serviceAccountName: carbon-kube-poller
       containers:
         - name: poller
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -19,3 +21,23 @@ spec:
           env:
             - name: POLL_INTERVAL_SECONDS
               value: "{{ .Values.poller.intervalSeconds }}"
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: ELECTRICITYMAPS_ZONES
+              value: "{{ join "," .Values.poller.electricityMaps.zones }}"
+            - name: ELECTRICITYMAPS_BASE_URL
+              value: "{{ .Values.poller.electricityMaps.baseUrl }}"
+            {{- if .Values.poller.electricityMaps.apiKey }}
+            - name: ELECTRICITYMAPS_API_KEY
+              value: "{{ .Values.poller.electricityMaps.apiKey }}"
+            {{- end }}
+            {{- if .Values.poller.electricityMaps.secretName }}
+            - name: ELECTRICITYMAPS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Values.poller.electricityMaps.secretName }}"
+                  key: "{{ .Values.poller.electricityMaps.secretKey }}"
+            {{- end }}
+{{- end }}

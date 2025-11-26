@@ -4,6 +4,7 @@ import (
     "context"
     "log"
     "time"
+    "os"
 
     "github.com/example/carbon-kube/pkg/emission"
 )
@@ -14,10 +15,10 @@ func main() {
     cfg := emission.Config{
         MigrationThreshold: 200.0,
     }
-    client := emission.NewMemoryScoreClient([]emission.CarbonScore{
-        emission.NewTestScore("us-west-2a", 150.0),
-        emission.NewTestScore("us-west-2b", 450.0),
-    })
+    ns := os.Getenv("POD_NAMESPACE")
+    if ns == "" { ns = "default" }
+    client, err := emission.NewKubeCarbonScoreClient(ns)
+    if err != nil { log.Fatalf("kube score client: %v", err) }
     tainter := emission.NewNodeTainter(client, cfg)
 
     ctx, cancel := context.WithCancel(context.Background())

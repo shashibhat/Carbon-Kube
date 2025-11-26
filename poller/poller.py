@@ -1,6 +1,10 @@
 import asyncio
+import os
 from dataclasses import dataclass
 from typing import Dict, List
+import requests
+from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 
 
 @dataclass
@@ -37,9 +41,20 @@ class CarbonPoller:
         self._config = config
 
     async def fetch_for_zone(self, zone: str) -> CarbonScore:
-        """Simulate an external API call for the given zone."""
         await asyncio.sleep(0.01)
-        # Deterministic fake intensity: proportional to zone name length.
+        api_key = os.getenv("ELECTRICITYMAPS_API_KEY", "")
+        base_url = os.getenv("ELECTRICITYMAPS_BASE_URL", "https://api.electricitymap.org/v3")
+        if api_key:
+            try:
+                url = f"{base_url}/carbon-intensity/latest?zone={zone}"
+                headers = {"auth-token": api_key}
+                resp = requests.get(url, headers=headers, timeout=5)
+                resp.raise_for_status()
+                data = resp.json()
+                intensity = float(data.get("carbonIntensity", 0.0))
+                return CarbonScore(zone=zone, intensity_g_per_kwh=intensity)
+            except Exception:
+                pass
         intensity = float(len(zone) * 10)
         return CarbonScore(zone=zone, intensity_g_per_kwh=intensity)
 
@@ -48,12 +63,7 @@ class CarbonPoller:
         tasks = [self.fetch_for_zone(z) for z in self._config.zones]
         return await asyncio.gather(*tasks)
 
-    async def write_crd(self, scores: List[CarbonScore]) -> None:
-        """Write the scores to a CarbonScore CRD (simulated).
-
-        Replace this with a real call to kubernetes_asyncio.CustomObjectsApi
-        in your cluster.
-        """
+    async def write_crd(self, scores: List[CarbonScore], namespace: str) -> None:
         payload: Dict[str, object] = {
             "apiVersion": "emission.carbon-kube.io/v1alpha1",
             "kind": "CarbonScore",
@@ -69,11 +79,28 @@ class CarbonPoller:
                 ]
             },
         }
-        print("Would write CRD payload:", payload)
+        try:
+            try:
+                config.load_incluster_config()
+            except Exception:
+                config.load_kube_config()
+            api = client.CustomObjectsApi()
+            group = "emission.carbon-kube.io"
+            version = "v1alpha1"
+            plural = "carbonscores"
+            name = payload["metadata"]["name"]
+            try:
+                api.create_namespaced_custom_object(group, version, namespace, plural, payload)
+            except ApiException as e:
+                if e.status == 409:
+                    api.patch_namespaced_custom_object(group, version, namespace, plural, name, payload)
+                else:
+                    raise
+        except Exception as e:
+            print("CRD write failed:", e)
 
-    async def run_forever(self, interval_seconds: int = 300) -> None:
-        """Main polling loop."""
+    async def run_forever(self, interval_seconds: int = 300, namespace: str = "default") -> None:
         while True:
             scores = await self.poll_once()
-            await self.write_crd(scores)
+            await self.write_crd(scores, namespace)
             await asyncio.sleep(interval_seconds)

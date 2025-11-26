@@ -1,0 +1,12 @@
+NAME                                                     READY   STATUS      RESTARTS   AGE
+alertmanager-monitoring-kube-prometheus-alertmanager-0   2/2     Running     0          7d8h
+carbon-kube-mutator-7884c6c6c6-pbkmr                     1/1     Running     0          2h15m
+carbon-kube-poller-56475cb4b-9hrhw                       1/1     Running     0          5d10h
+carbon-kube-taint-controller-7d65db9dff-kxpsb            1/1     Running     0          2h15m
+monitoring-grafana-5b7494586b-4j7bn                      3/3     Running     0          7d8h
+monitoring-kube-prometheus-operator-6bf9cb775c-cqf5r     1/1     Running     0          7d8h
+monitoring-kube-state-metrics-54494c79c5-r2zgw           1/1     Running     0          7d8h
+monitoring-prometheus-node-exporter-b4dgz                1/1     Running     0          7d8h
+monitoring-prometheus-node-exporter-s442p                1/1     Running     0          7d8h
+prometheus-monitoring-kube-prometheus-prometheus-0       2/2     Running     0          7d8h
+spark-pi-driver                                          0/1     Completed   0          13m

@@ -5,6 +5,21 @@ image:
 
 poller:
   intervalSeconds: 300
+  enabled: true
+  electricityMaps:
+    zones: ["us-west-2a","us-west-2b"]
+    baseUrl: "https://api.electricitymap.org/v3"
+    apiKey: ""
+    secretName: ""
+    secretKey: "lo8R9vVQ8n8V427q57CZ"
 
 metrics:
   port: 9090
+  serviceMonitor:
+    enabled: true
+
+mutator:
+  enabled: true
+
+taintController:
+  enabled: true

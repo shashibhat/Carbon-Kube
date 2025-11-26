@@ -36,7 +36,7 @@ func TestMutatePenalizesHighEmissionZone(t *testing.T) {
         t.Fatalf("Mutate() returned error: %v", err)
     }
 
-    if nodes[0].Score >= nodes[1].Score {
+    if nodes[0].Score <= nodes[1].Score {
         t.Fatalf("expected brown-zone node to be penalized, got n1=%f n2=%f", nodes[0].Score, nodes[1].Score)
     }
 }

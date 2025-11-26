@@ -1,0 +1,10 @@
+NAME                                                     READY   STATUS      RESTARTS   AGE     IP             NODE                                         NOMINATED NODE   READINESS GATES
+alertmanager-monitoring-kube-prometheus-alertmanager-0   2/2     Running     0          7d7h    10.0.182.63    ip-10-0-166-114.us-west-2.compute.internal   <none>           <none>
+carbon-kube-poller-56475cb4b-9hrhw                       1/1     Running     0          5d10h   10.0.132.57    ip-10-0-166-114.us-west-2.compute.internal   <none>           <none>
+monitoring-grafana-5b7494586b-4j7bn                      3/3     Running     0          7d7h    10.0.239.180   ip-10-0-241-94.us-west-2.compute.internal    <none>           <none>
+monitoring-kube-prometheus-operator-6bf9cb775c-cqf5r     1/1     Running     0          7d7h    10.0.138.172   ip-10-0-166-114.us-west-2.compute.internal   <none>           <none>
+monitoring-kube-state-metrics-54494c79c5-r2zgw           1/1     Running     0          7d7h    10.0.231.163   ip-10-0-241-94.us-west-2.compute.internal    <none>           <none>
+monitoring-prometheus-node-exporter-b4dgz                1/1     Running     0          7d7h    10.0.166.114   ip-10-0-166-114.us-west-2.compute.internal   <none>           <none>
+monitoring-prometheus-node-exporter-s442p                1/1     Running     0          7d7h    10.0.241.94    ip-10-0-241-94.us-west-2.compute.internal    <none>           <none>
+prometheus-monitoring-kube-prometheus-prometheus-0       2/2     Running     0          7d7h    10.0.168.51    ip-10-0-166-114.us-west-2.compute.internal   <none>           <none>
+spark-pi-driver                                          0/1     Completed   0          67s     10.0.146.44    ip-10-0-166-114.us-west-2.compute.internal   <none>           <none>

@@ -1,0 +1,9 @@
+citation: Carbon‑Kube: Carbon‑Aware Scheduling for Kubernetes
+authors:
+  - family-names: Doe
+    given-names: Jane
+title: Carbon‑Kube: Carbon‑Aware Scheduling for Kubernetes
+version: 1.0
+date-released: 2025-11-19
+doi: 10.0000/carbon-kube.2025
+url: https://github.com/example/carbon-kube

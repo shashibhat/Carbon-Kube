@@ -1,0 +1,3 @@
+{
+  "app": ".cdk-env/bin/python3 app.py"
+}

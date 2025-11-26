@@ -1,0 +1,19 @@
+image:
+  repository: carbon-kube
+  tag: latest
+  pullPolicy: IfNotPresent
+
+poller:
+  intervalSeconds: 300
+  enabled: true
+
+metrics:
+  port: 9090
+  serviceMonitor:
+    enabled: true
+
+mutator:
+  enabled: true
+
+taintController:
+  enabled: true

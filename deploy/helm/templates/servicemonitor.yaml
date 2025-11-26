@@ -1,0 +1,15 @@
+{{- if and .Values.metrics.serviceMonitor.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: carbon-kube-metrics
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: carbon-kube
+  endpoints:
+    - port: http
+      interval: 30s
+{{- end }}

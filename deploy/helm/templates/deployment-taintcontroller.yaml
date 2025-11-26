@@ -1,3 +1,4 @@
+{{- if .Values.taintController.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12,7 +13,14 @@ spec:
       labels:
         app: carbon-kube-taint-controller
     spec:
+      serviceAccountName: carbon-kube-taint-controller
       containers:
         - name: controller
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           args: ["taintcontroller"]
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+{{- end }}

@@ -3,7 +3,7 @@
 ### Production Deployment on AWS EKS (GitHub‑Style)
 
 This document provides **complete, reproducible steps** to deploy Carbon‑Kube on AWS EKS using Docker, Helm, and AWS CDK.  
-It also includes instructions for **IEE‑grade experimentation and metrics collection**.
+It also includes instructions for **IEEE‑grade experimentation and metrics collection**.
 
 ---
 
@@ -16,6 +16,8 @@ kubectl 1.28+
 helm 3+
 docker
 cdk v2
+node/npm (for CDK CLI)
+python3
 ```
 
 ### AWS Requirements
@@ -27,13 +29,16 @@ cdk v2
 # 2. Build & Push Docker Image
 
 ```
-aws ecr create-repository --repository-name carbon-kube
-aws ecr get-login-password --region us-west-2 \
-  | docker login --username AWS --password-stdin <acct>.dkr.ecr.us-west-2.amazonaws.com
+REGION=us-west-2
+ACCOUNT_ID=<your-account-id>
+
+aws ecr create-repository --region $REGION --repository-name carbon-kube
+aws ecr get-login-password --region $REGION \
+  | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
 
 docker build -t carbon-kube .
-docker tag carbon-kube:latest <acct>.dkr.ecr.us-west-2.amazonaws.com/carbon-kube:latest
-docker push <acct>.dkr.ecr.us-west-2.amazonaws.com/carbon-kube:latest
+docker tag carbon-kube:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/carbon-kube:latest
+docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/carbon-kube:latest
 ```
 
 Update Helm values:
@@ -53,6 +58,8 @@ cd deploy/cdk
 pip install -r requirements.txt
 cdk bootstrap
 cdk deploy
+
+aws eks update-kubeconfig --name <cluster-name> --region $REGION
 ```
 
 This provisions:
@@ -64,10 +71,10 @@ This provisions:
 
 ---
 
-# 4. Deploy Carbon‑Kube via Helm
+# 4. Configure Carbon‑Kube via Helm
 
 ```
-helm install carbon-kube ./deploy/helm
+helm upgrade carbon-kube ./deploy/helm --install
 ```
 
 Components deployed:
@@ -113,7 +120,7 @@ Example: Spark job
 ```
 helm repo add spark https://googlecloudplatform.github.io/spark-on-k8s-operator
 helm install spark spark/spark-operator
-kubectl apply -f workloads/spark_job.yaml
+kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/spark-on-k8s-operator/master/examples/spark-pi.yaml
 ```
 
 ---
@@ -146,7 +153,7 @@ Record:
 
 ### Prometheus Export
 ```
-curl http://prometheus/api/v1/query?query=co2_saved_kg_total > co2.json
+curl http://localhost:9090/api/v1/query?query=co2_saved_kg_total > co2.json
 ```
 
 ### CarbonScore CRD
@@ -165,6 +172,8 @@ kubectl get pods -o wide > pod-placement.txt
 
 ```
 helm uninstall carbon-kube
+helm uninstall monitoring
+helm uninstall spark
 cd deploy/cdk
 cdk destroy
 ```
@@ -182,4 +191,9 @@ This guide provides all required steps to:
 
 Need help generating **evaluation.md**, **IEEE LaTeX template**, or **automation scripts**?  
 Ask anytime!
+Port‑forward Prometheus:
+
+```
+kubectl port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090
+```
 

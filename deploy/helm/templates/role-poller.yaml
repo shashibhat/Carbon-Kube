@@ -1,0 +1,8 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: carbon-kube-poller
+rules:
+  - apiGroups: ["emission.carbon-kube.io"]
+    resources: ["carbonscores"]
+    verbs: ["get","list","watch","create","update","patch"]
