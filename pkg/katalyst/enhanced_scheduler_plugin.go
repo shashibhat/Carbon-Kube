@@ -1,3 +1,4 @@
+//go:build katalyst
 package katalyst
 
 import (
@@ -108,10 +109,7 @@ func New(obj runtime.Object, h framework.Handle) (framework.Plugin, error) {
 		klog.V(2).Info("Using default Katalyst Carbon plugin configuration")
 	}
 
-	kubeClient, err := kubernetes.NewForConfig(h.ClientSet().RESTConfig())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Kubernetes client: %v", err)
-	}
+    kubeClient := h.ClientSet()
 
 	qosController, err := NewCarbonQoSController(kubeClient)
 	if err != nil {

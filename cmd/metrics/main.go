@@ -4,7 +4,7 @@ import (
     "log"
     "net/http"
 
-    "github.com/example/carbon-kube/pkg/emission"
+    "github.com/shashibhat/Carbon-Kube/pkg/emission"
 )
 
 // Standalone metrics exporter.

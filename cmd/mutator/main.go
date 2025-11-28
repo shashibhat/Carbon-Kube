@@ -7,7 +7,7 @@ import (
     "time"
     "os"
 
-    "github.com/example/carbon-kube/pkg/emission"
+    "github.com/shashibhat/Carbon-Kube/pkg/emission"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"

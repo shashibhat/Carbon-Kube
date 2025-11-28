@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-kube-operator
+  labels:
+    app: carbon-kube-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carbon-kube-operator
+  template:
+    metadata:
+      labels:
+        app: carbon-kube-operator
+    spec:
+      serviceAccountName: carbon-kube
+      containers:
+        - name: operator
+          image: {{ .Values.images.operator }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          args:
+            - 
+          ports:
+            - name: http
+              containerPort: 8080

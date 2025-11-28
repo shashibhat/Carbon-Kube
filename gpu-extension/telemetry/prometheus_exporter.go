@@ -1,10 +1,12 @@
+//go:build gpu
 package telemetry
 
 import (
-	"context"
-	"fmt"
-	"net/http"
-	"time"
+    "context"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"

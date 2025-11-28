@@ -1,0 +1,35 @@
+apiVersion: carbonkube.io/v1
+kind: CarbonJobSpec
+metadata:
+  name: sample-carbon-job
+  namespace: default
+spec:
+  jobType: batch
+  carbonPolicyRef: sample-carbon-policy
+  resources:
+    cpu: "4"
+    memory: "8Gi"
+    gpu: "1"
+  dataAffinity:
+    primaryRegion: us-east-1
+    allowedRegions:
+      - us-east-1
+      - eu-west-1
+    kafkaTopics:
+      - events
+    kafkaRegion: us-east-1
+    objectStores:
+      - s3://bucket-a
+    dbRegion: us-east-1
+    maxExtraLatencyMs: 100
+  mobility:
+    level: constrained
+    reasons:
+      - data-residency
+  temporal:
+    allowDelay: true
+    maxDelay: "1h"
+    requireGreenWindow: "20m"
+  budgets:
+    maxCarbonForThisRun: 30
+    desiredCarbonReduction: 0.3

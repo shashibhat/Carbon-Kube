@@ -1,13 +1,13 @@
+//go:build gpu
 package gpuplugin
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"math"
-	"strconv"
-	"strings"
-	"time"
+    "context"
+    "encoding/json"
+    "fmt"
+    "strconv"
+    "strings"
+    "time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/prometheus/client_golang/prometheus"

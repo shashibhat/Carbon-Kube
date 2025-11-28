@@ -1,3 +1,5 @@
+//go:build gpu
+
 package evaluation
 
 import (
@@ -6,55 +8,55 @@ import (
 	"sort"
 	"time"
 
-	workloads "github.com/carbon-kube/carbon-kube/gpu-extension/workloads"
+	workloads "github.com/shashibhat/Carbon-Kube/gpu-extension/workloads"
 	"go.uber.org/zap"
 )
 
 // AblationStudyManager manages ablation studies for systematic component analysis
 type AblationStudyManager struct {
-	logger           *zap.Logger
-	experimentRunner *ExperimentRunner
+	logger              *zap.Logger
+	experimentRunner    *ExperimentRunner
 	statisticalAnalyzer *StatisticalAnalyzer
-	config           *AblationConfig
+	config              *AblationConfig
 }
 
 // AblationConfig represents configuration for ablation studies
 type AblationConfig struct {
-	MaxComponents        int                    `json:"maxComponents"`        // Maximum components to ablate
-	MinComponents        int                    `json:"minComponents"`        // Minimum components to keep
-	AblationStrategy     string                 `json:"ablationStrategy"`     // Ablation strategy
-	ComponentPriority    map[string]float64     `json:"componentPriority"`    // Component priority weights
-	InteractionAnalysis  bool                   `json:"interactionAnalysis"`  // Analyze component interactions
-	HierarchicalAblation bool                   `json:"hierarchicalAblation"` // Hierarchical ablation
-	StatisticalValidation bool                  `json:"statisticalValidation"` // Statistical validation
-	EffectSizeThreshold  float64                `json:"effectSizeThreshold"`  // Effect size threshold
-	SignificanceLevel    float64                `json:"significanceLevel"`    // Statistical significance level
-	ReplicationCount     int                    `json:"replicationCount"`     // Number of replications
-	ParallelExecution    bool                   `json:"parallelExecution"`    // Parallel execution
-	ResourceLimits       workloads.ResourceLimits         `json:"resourceLimits"`       // Resource limits
-	QualityThresholds    QualityThresholds      `json:"qualityThresholds"`    // Quality thresholds
-	ReportingConfig      AblationReportingConfig `json:"reportingConfig"`     // Reporting configuration
+	MaxComponents         int                      `json:"maxComponents"`         // Maximum components to ablate
+	MinComponents         int                      `json:"minComponents"`         // Minimum components to keep
+	AblationStrategy      string                   `json:"ablationStrategy"`      // Ablation strategy
+	ComponentPriority     map[string]float64       `json:"componentPriority"`     // Component priority weights
+	InteractionAnalysis   bool                     `json:"interactionAnalysis"`   // Analyze component interactions
+	HierarchicalAblation  bool                     `json:"hierarchicalAblation"`  // Hierarchical ablation
+	StatisticalValidation bool                     `json:"statisticalValidation"` // Statistical validation
+	EffectSizeThreshold   float64                  `json:"effectSizeThreshold"`   // Effect size threshold
+	SignificanceLevel     float64                  `json:"significanceLevel"`     // Statistical significance level
+	ReplicationCount      int                      `json:"replicationCount"`      // Number of replications
+	ParallelExecution     bool                     `json:"parallelExecution"`     // Parallel execution
+	ResourceLimits        workloads.ResourceLimits `json:"resourceLimits"`        // Resource limits
+	QualityThresholds     QualityThresholds        `json:"qualityThresholds"`     // Quality thresholds
+	ReportingConfig       AblationReportingConfig  `json:"reportingConfig"`       // Reporting configuration
 }
 
 // AblationStudy represents a comprehensive ablation study
 type AblationStudy struct {
-	ID                  string                    `json:"id"`                  // Study ID
-	Name                string                    `json:"name"`                // Study name
-	Description         string                    `json:"description"`         // Study description
-	BaselineExperiment  *Experiment               `json:"baselineExperiment"`  // Baseline experiment
-	Components          []AblationComponent       `json:"components"`          // Components to ablate
-	AblationStrategy    AblationStrategy          `json:"ablationStrategy"`    // Ablation strategy
-	ExecutionPlan       AblationExecutionPlan     `json:"executionPlan"`       // Execution plan
-	Results             *AblationResults          `json:"results"`             // Study results
-	Analysis            *AblationAnalysis         `json:"analysis"`            // Statistical analysis
-	Validation          *AblationValidation       `json:"validation"`          // Validation results
-	QualityAssessment   *AblationQualityAssessment `json:"qualityAssessment"`  // Quality assessment
-	Recommendations     []AblationRecommendation  `json:"recommendations"`     // Recommendations
-	Status              AblationStatus            `json:"status"`              // Study status
-	Metadata            map[string]interface{}    `json:"metadata"`            // Additional metadata
-	CreatedAt           time.Time                 `json:"createdAt"`           // Creation timestamp
-	UpdatedAt           time.Time                 `json:"updatedAt"`           // Update timestamp
-	CompletedAt         *time.Time                `json:"completedAt"`         // Completion timestamp
+	ID                 string                     `json:"id"`                 // Study ID
+	Name               string                     `json:"name"`               // Study name
+	Description        string                     `json:"description"`        // Study description
+	BaselineExperiment *Experiment                `json:"baselineExperiment"` // Baseline experiment
+	Components         []AblationComponent        `json:"components"`         // Components to ablate
+	AblationStrategy   AblationStrategy           `json:"ablationStrategy"`   // Ablation strategy
+	ExecutionPlan      AblationExecutionPlan      `json:"executionPlan"`      // Execution plan
+	Results            *AblationResults           `json:"results"`            // Study results
+	Analysis           *AblationAnalysis          `json:"analysis"`           // Statistical analysis
+	Validation         *AblationValidation        `json:"validation"`         // Validation results
+	QualityAssessment  *AblationQualityAssessment `json:"qualityAssessment"`  // Quality assessment
+	Recommendations    []AblationRecommendation   `json:"recommendations"`    // Recommendations
+	Status             AblationStatus             `json:"status"`             // Study status
+	Metadata           map[string]interface{}     `json:"metadata"`           // Additional metadata
+	CreatedAt          time.Time                  `json:"createdAt"`          // Creation timestamp
+	UpdatedAt          time.Time                  `json:"updatedAt"`          // Update timestamp
+	CompletedAt        *time.Time                 `json:"completedAt"`        // Completion timestamp
 }
 
 // AblationComponent represents a component that can be ablated
@@ -88,22 +90,22 @@ type AblationMethod struct {
 
 // ComponentConfiguration represents component configuration
 type ComponentConfiguration struct {
-	Parameters      map[string]interface{} `json:"parameters"`      // Configuration parameters
-	DefaultValues   map[string]interface{} `json:"defaultValues"`   // Default parameter values
-	ValidRanges     map[string]ComponentValueRange  `json:"validRanges"`     // Valid parameter ranges
-	Relationships   []ParameterRelationship `json:"relationships"`  // Parameter relationships
-	Constraints     []ConfigurationConstraint `json:"constraints"`  // Configuration constraints
-	OptimalSettings map[string]interface{} `json:"optimalSettings"` // Optimal settings
+	Parameters      map[string]interface{}         `json:"parameters"`      // Configuration parameters
+	DefaultValues   map[string]interface{}         `json:"defaultValues"`   // Default parameter values
+	ValidRanges     map[string]ComponentValueRange `json:"validRanges"`     // Valid parameter ranges
+	Relationships   []ParameterRelationship        `json:"relationships"`   // Parameter relationships
+	Constraints     []ConfigurationConstraint      `json:"constraints"`     // Configuration constraints
+	OptimalSettings map[string]interface{}         `json:"optimalSettings"` // Optimal settings
 }
 
 // ComponentValueRange represents a range of valid values
 type ComponentValueRange struct {
-    Type     string      `json:"type"`     // Range type (numeric/categorical/boolean)
-    Min      interface{} `json:"min"`      // Minimum value
-    Max      interface{} `json:"max"`      // Maximum value
-    Step     interface{} `json:"step"`     // Step size
-    Values   []interface{} `json:"values"` // Valid discrete values
-    Default  interface{} `json:"default"`  // Default value
+	Type    string        `json:"type"`    // Range type (numeric/categorical/boolean)
+	Min     interface{}   `json:"min"`     // Minimum value
+	Max     interface{}   `json:"max"`     // Maximum value
+	Step    interface{}   `json:"step"`    // Step size
+	Values  []interface{} `json:"values"`  // Valid discrete values
+	Default interface{}   `json:"default"` // Default value
 }
 
 // ParameterRelationship represents a relationship between parameters
@@ -116,28 +118,28 @@ type ParameterRelationship struct {
 
 // ConfigurationConstraint represents a configuration constraint
 type ConfigurationConstraint struct {
-	Name        string                 `json:"name"`        // Constraint name
-	Type        string                 `json:"type"`        // Constraint type
-	Expression  string                 `json:"expression"`  // Constraint expression
-	Parameters  []string               `json:"parameters"`  // Affected parameters
-	Violation   string                 `json:"violation"`   // Violation message
-	Severity    string                 `json:"severity"`    // Constraint severity
-	Metadata    map[string]interface{} `json:"metadata"`    // Constraint metadata
+	Name       string                 `json:"name"`       // Constraint name
+	Type       string                 `json:"type"`       // Constraint type
+	Expression string                 `json:"expression"` // Constraint expression
+	Parameters []string               `json:"parameters"` // Affected parameters
+	Violation  string                 `json:"violation"`  // Violation message
+	Severity   string                 `json:"severity"`   // Constraint severity
+	Metadata   map[string]interface{} `json:"metadata"`   // Constraint metadata
 }
 
 // ExpectedImpact represents expected impact of component ablation
 type ExpectedImpact struct {
-	Performance     ImpactEstimate         `json:"performance"`     // Performance impact
-	Accuracy        ImpactEstimate         `json:"accuracy"`        // Accuracy impact
-	Efficiency      ImpactEstimate         `json:"efficiency"`      // Efficiency impact
-	Robustness      ImpactEstimate         `json:"robustness"`      // Robustness impact
-	Scalability     ImpactEstimate         `json:"scalability"`     // Scalability impact
-	CarbonFootprint ImpactEstimate         `json:"carbonFootprint"` // Carbon footprint impact
-	Cost            ImpactEstimate         `json:"cost"`            // Cost impact
-	Reliability     ImpactEstimate         `json:"reliability"`     // Reliability impact
-	Security        ImpactEstimate         `json:"security"`        // Security impact
-	Maintainability ImpactEstimate         `json:"maintainability"` // Maintainability impact
-	CustomMetrics   map[string]ImpactEstimate `json:"customMetrics"` // Custom metric impacts
+	Performance     ImpactEstimate            `json:"performance"`     // Performance impact
+	Accuracy        ImpactEstimate            `json:"accuracy"`        // Accuracy impact
+	Efficiency      ImpactEstimate            `json:"efficiency"`      // Efficiency impact
+	Robustness      ImpactEstimate            `json:"robustness"`      // Robustness impact
+	Scalability     ImpactEstimate            `json:"scalability"`     // Scalability impact
+	CarbonFootprint ImpactEstimate            `json:"carbonFootprint"` // Carbon footprint impact
+	Cost            ImpactEstimate            `json:"cost"`            // Cost impact
+	Reliability     ImpactEstimate            `json:"reliability"`     // Reliability impact
+	Security        ImpactEstimate            `json:"security"`        // Security impact
+	Maintainability ImpactEstimate            `json:"maintainability"` // Maintainability impact
+	CustomMetrics   map[string]ImpactEstimate `json:"customMetrics"`   // Custom metric impacts
 }
 
 // ImpactEstimate represents an impact estimate
@@ -170,14 +172,14 @@ type ComponentConstraint struct {
 
 // AblationStrategy represents the strategy for conducting ablation studies
 type AblationStrategy struct {
-	Type                string                     `json:"type"`                // Strategy type
-	ComponentSelection  ComponentSelectionStrategy `json:"componentSelection"`  // Component selection strategy
-	AblationOrder       AblationOrderStrategy      `json:"ablationOrder"`       // Ablation order strategy
+	Type                string                      `json:"type"`                // Strategy type
+	ComponentSelection  ComponentSelectionStrategy  `json:"componentSelection"`  // Component selection strategy
+	AblationOrder       AblationOrderStrategy       `json:"ablationOrder"`       // Ablation order strategy
 	InteractionAnalysis InteractionAnalysisStrategy `json:"interactionAnalysis"` // Interaction analysis strategy
-	ValidationStrategy  ValidationStrategy         `json:"validationStrategy"`  // Validation strategy
-	OptimizationGoals   []OptimizationGoal         `json:"optimizationGoals"`   // Optimization goals
-	StoppingCriteria    []StoppingCriterion        `json:"stoppingCriteria"`    // Stopping criteria
-	AdaptiveStrategy    AdaptiveStrategy           `json:"adaptiveStrategy"`    // Adaptive strategy
+	ValidationStrategy  ValidationStrategy          `json:"validationStrategy"`  // Validation strategy
+	OptimizationGoals   []OptimizationGoal          `json:"optimizationGoals"`   // Optimization goals
+	StoppingCriteria    []StoppingCriterion         `json:"stoppingCriteria"`    // Stopping criteria
+	AdaptiveStrategy    AdaptiveStrategy            `json:"adaptiveStrategy"`    // Adaptive strategy
 }
 
 // ComponentSelectionStrategy represents component selection strategy
@@ -201,42 +203,42 @@ type SelectionCriterion struct {
 
 // SelectionConstraint represents a constraint on component selection
 type SelectionConstraint struct {
-	Type        string                 `json:"type"`        // Constraint type
-	Expression  string                 `json:"expression"`  // Constraint expression
-	Components  []string               `json:"components"`  // Affected components
-	Violation   string                 `json:"violation"`   // Violation message
-	Severity    string                 `json:"severity"`    // Constraint severity
-	Parameters  map[string]interface{} `json:"parameters"`  // Constraint parameters
+	Type       string                 `json:"type"`       // Constraint type
+	Expression string                 `json:"expression"` // Constraint expression
+	Components []string               `json:"components"` // Affected components
+	Violation  string                 `json:"violation"`  // Violation message
+	Severity   string                 `json:"severity"`   // Constraint severity
+	Parameters map[string]interface{} `json:"parameters"` // Constraint parameters
 }
 
 // AblationOrderStrategy represents the strategy for ordering ablations
 type AblationOrderStrategy struct {
-	Method      string                 `json:"method"`      // Ordering method
-	Priority    string                 `json:"priority"`    // Priority scheme
-	Dependencies bool                  `json:"dependencies"` // Consider dependencies
-	Interactions bool                  `json:"interactions"` // Consider interactions
-	Adaptive    bool                   `json:"adaptive"`    // Adaptive ordering
-	Parameters  map[string]interface{} `json:"parameters"`  // Strategy parameters
+	Method       string                 `json:"method"`       // Ordering method
+	Priority     string                 `json:"priority"`     // Priority scheme
+	Dependencies bool                   `json:"dependencies"` // Consider dependencies
+	Interactions bool                   `json:"interactions"` // Consider interactions
+	Adaptive     bool                   `json:"adaptive"`     // Adaptive ordering
+	Parameters   map[string]interface{} `json:"parameters"`   // Strategy parameters
 }
 
 // InteractionAnalysisStrategy represents interaction analysis strategy
 type InteractionAnalysisStrategy struct {
-	Enabled     bool                   `json:"enabled"`     // Enable interaction analysis
-	Method      string                 `json:"method"`      // Analysis method
-	MaxOrder    int                    `json:"maxOrder"`    // Maximum interaction order
-	Threshold   float64                `json:"threshold"`   // Significance threshold
-	Correction  string                 `json:"correction"`  // Multiple comparison correction
-	Parameters  map[string]interface{} `json:"parameters"`  // Strategy parameters
+	Enabled    bool                   `json:"enabled"`    // Enable interaction analysis
+	Method     string                 `json:"method"`     // Analysis method
+	MaxOrder   int                    `json:"maxOrder"`   // Maximum interaction order
+	Threshold  float64                `json:"threshold"`  // Significance threshold
+	Correction string                 `json:"correction"` // Multiple comparison correction
+	Parameters map[string]interface{} `json:"parameters"` // Strategy parameters
 }
 
 // ValidationStrategy represents validation strategy for ablation studies
 type ValidationStrategy struct {
-	CrossValidation    CrossValidationConfig    `json:"crossValidation"`    // Cross-validation config
-	BootstrapValidation BootstrapValidationConfig `json:"bootstrapValidation"` // Bootstrap validation config
-	HoldoutValidation  HoldoutValidationConfig  `json:"holdoutValidation"`  // Holdout validation config
-	StatisticalTests   []StatisticalTestConfig  `json:"statisticalTests"`   // Statistical tests
-	QualityChecks      []QualityCheckConfig     `json:"qualityChecks"`      // Quality checks
-	ReproducibilityChecks ReproducibilityConfig `json:"reproducibilityChecks"` // Reproducibility checks
+	CrossValidation       CrossValidationConfig     `json:"crossValidation"`       // Cross-validation config
+	BootstrapValidation   BootstrapValidationConfig `json:"bootstrapValidation"`   // Bootstrap validation config
+	HoldoutValidation     HoldoutValidationConfig   `json:"holdoutValidation"`     // Holdout validation config
+	StatisticalTests      []StatisticalTestConfig   `json:"statisticalTests"`      // Statistical tests
+	QualityChecks         []QualityCheckConfig      `json:"qualityChecks"`         // Quality checks
+	ReproducibilityChecks ReproducibilityConfig     `json:"reproducibilityChecks"` // Reproducibility checks
 }
 
 // CrossValidationConfig represents cross-validation configuration
@@ -263,33 +265,33 @@ type BootstrapValidationConfig struct {
 
 // HoldoutValidationConfig represents holdout validation configuration
 type HoldoutValidationConfig struct {
-	Enabled     bool                   `json:"enabled"`     // Enable holdout validation
-	TestSize    float64                `json:"testSize"`    // Test set size ratio
-	Stratified  bool                   `json:"stratified"`  // Stratified sampling
-	Shuffle     bool                   `json:"shuffle"`     // Shuffle data
-	Seed        int64                  `json:"seed"`        // Random seed
-	Parameters  map[string]interface{} `json:"parameters"`  // Additional parameters
+	Enabled    bool                   `json:"enabled"`    // Enable holdout validation
+	TestSize   float64                `json:"testSize"`   // Test set size ratio
+	Stratified bool                   `json:"stratified"` // Stratified sampling
+	Shuffle    bool                   `json:"shuffle"`    // Shuffle data
+	Seed       int64                  `json:"seed"`       // Random seed
+	Parameters map[string]interface{} `json:"parameters"` // Additional parameters
 }
 
 // StatisticalTestConfig represents statistical test configuration
 type StatisticalTestConfig struct {
-	Name        string                 `json:"name"`        // Test name
-	Type        string                 `json:"type"`        // Test type
-	Alpha       float64                `json:"alpha"`       // Significance level
-	Power       float64                `json:"power"`       // Desired power
-	EffectSize  float64                `json:"effectSize"`  // Minimum effect size
-	Correction  string                 `json:"correction"`  // Multiple comparison correction
-	Parameters  map[string]interface{} `json:"parameters"`  // Test parameters
+	Name       string                 `json:"name"`       // Test name
+	Type       string                 `json:"type"`       // Test type
+	Alpha      float64                `json:"alpha"`      // Significance level
+	Power      float64                `json:"power"`      // Desired power
+	EffectSize float64                `json:"effectSize"` // Minimum effect size
+	Correction string                 `json:"correction"` // Multiple comparison correction
+	Parameters map[string]interface{} `json:"parameters"` // Test parameters
 }
 
 // QualityCheckConfig represents quality check configuration
 type QualityCheckConfig struct {
-	Name        string                 `json:"name"`        // Check name
-	Type        string                 `json:"type"`        // Check type
-	Threshold   float64                `json:"threshold"`   // Quality threshold
-	Critical    bool                   `json:"critical"`    // Critical check
-	Automated   bool                   `json:"automated"`   // Automated check
-	Parameters  map[string]interface{} `json:"parameters"`  // Check parameters
+	Name       string                 `json:"name"`       // Check name
+	Type       string                 `json:"type"`       // Check type
+	Threshold  float64                `json:"threshold"`  // Quality threshold
+	Critical   bool                   `json:"critical"`   // Critical check
+	Automated  bool                   `json:"automated"`  // Automated check
+	Parameters map[string]interface{} `json:"parameters"` // Check parameters
 }
 
 // ReproducibilityConfig represents reproducibility configuration
@@ -305,17 +307,16 @@ type ReproducibilityConfig struct {
 
 // OptimizationGoal type is defined in framework.go; using that shared type here.
 
-
 // StoppingCriterion represents a stopping criterion
 type StoppingCriterion struct {
-	Name        string                 `json:"name"`        // Criterion name
-	Type        string                 `json:"type"`        // Criterion type
-	Condition   string                 `json:"condition"`   // Stopping condition
-	Threshold   float64                `json:"threshold"`   // Threshold value
-	Patience    int                    `json:"patience"`    // Patience parameter
-	MinDelta    float64                `json:"minDelta"`    // Minimum change
-	Enabled     bool                   `json:"enabled"`     // Enable criterion
-	Parameters  map[string]interface{} `json:"parameters"`  // Criterion parameters
+	Name       string                 `json:"name"`       // Criterion name
+	Type       string                 `json:"type"`       // Criterion type
+	Condition  string                 `json:"condition"`  // Stopping condition
+	Threshold  float64                `json:"threshold"`  // Threshold value
+	Patience   int                    `json:"patience"`   // Patience parameter
+	MinDelta   float64                `json:"minDelta"`   // Minimum change
+	Enabled    bool                   `json:"enabled"`    // Enable criterion
+	Parameters map[string]interface{} `json:"parameters"` // Criterion parameters
 }
 
 // AdaptiveStrategy represents adaptive strategy configuration
@@ -331,16 +332,16 @@ type AdaptiveStrategy struct {
 
 // AblationExecutionPlan represents the execution plan for ablation study
 type AblationExecutionPlan struct {
-	Phases          []ExecutionPhase       `json:"phases"`          // Execution phases
-	Schedule        ExecutionSchedule      `json:"schedule"`        // Execution schedule
-	ResourcePlan    ResourcePlan           `json:"resourcePlan"`    // Resource allocation plan
-	Dependencies    []PhaseDependency      `json:"dependencies"`    // Phase dependencies
-	Checkpoints     []ExecutionCheckpoint  `json:"checkpoints"`     // Execution checkpoints
-	Rollback        RollbackPlan           `json:"rollback"`        // Rollback plan
-	Monitoring      MonitoringPlan         `json:"monitoring"`      // Monitoring plan
-	QualityGates    []QualityGate          `json:"qualityGates"`    // Quality gates
-	RiskMitigation  []RiskMitigation       `json:"riskMitigation"`  // Risk mitigation
-	Contingencies   []ContingencyPlan      `json:"contingencies"`   // Contingency plans
+	Phases         []ExecutionPhase      `json:"phases"`         // Execution phases
+	Schedule       ExecutionSchedule     `json:"schedule"`       // Execution schedule
+	ResourcePlan   ResourcePlan          `json:"resourcePlan"`   // Resource allocation plan
+	Dependencies   []PhaseDependency     `json:"dependencies"`   // Phase dependencies
+	Checkpoints    []ExecutionCheckpoint `json:"checkpoints"`    // Execution checkpoints
+	Rollback       RollbackPlan          `json:"rollback"`       // Rollback plan
+	Monitoring     MonitoringPlan        `json:"monitoring"`     // Monitoring plan
+	QualityGates   []QualityGate         `json:"qualityGates"`   // Quality gates
+	RiskMitigation []RiskMitigation      `json:"riskMitigation"` // Risk mitigation
+	Contingencies  []ContingencyPlan     `json:"contingencies"`  // Contingency plans
 }
 
 // ExecutionPhase represents a phase in the execution plan
@@ -363,33 +364,31 @@ type ExecutionPhase struct {
 
 // ExecutionSchedule represents the execution schedule
 type ExecutionSchedule struct {
-	StartTime       time.Time              `json:"startTime"`       // Planned start time
-	EndTime         time.Time              `json:"endTime"`         // Planned end time
-	Duration        time.Duration          `json:"duration"`        // Total duration
-	Phases          []PhaseSchedule        `json:"phases"`          // Phase schedules
-	Milestones      []Milestone            `json:"milestones"`      // Project milestones
-	CriticalPath    []string               `json:"criticalPath"`    // Critical path phases
-	BufferTime      time.Duration          `json:"bufferTime"`      // Buffer time
-	Constraints     []ScheduleConstraint   `json:"constraints"`     // Schedule constraints
-	Flexibility     ScheduleFlexibility    `json:"flexibility"`     // Schedule flexibility
-	Optimization    ScheduleOptimization   `json:"optimization"`    // Schedule optimization
+	StartTime    time.Time            `json:"startTime"`    // Planned start time
+	EndTime      time.Time            `json:"endTime"`      // Planned end time
+	Duration     time.Duration        `json:"duration"`     // Total duration
+	Phases       []PhaseSchedule      `json:"phases"`       // Phase schedules
+	Milestones   []Milestone          `json:"milestones"`   // Project milestones
+	CriticalPath []string             `json:"criticalPath"` // Critical path phases
+	BufferTime   time.Duration        `json:"bufferTime"`   // Buffer time
+	Constraints  []ScheduleConstraint `json:"constraints"`  // Schedule constraints
+	Flexibility  ScheduleFlexibility  `json:"flexibility"`  // Schedule flexibility
+	Optimization ScheduleOptimization `json:"optimization"` // Schedule optimization
 }
 
 // PhaseSchedule represents the schedule for a phase
 type PhaseSchedule struct {
-	PhaseID     string        `json:"phaseId"`     // Phase ID
-	StartTime   time.Time     `json:"startTime"`   // Phase start time
-	EndTime     time.Time     `json:"endTime"`     // Phase end time
-	Duration    time.Duration `json:"duration"`    // Phase duration
-	BufferTime  time.Duration `json:"bufferTime"`  // Phase buffer time
-	Priority    int           `json:"priority"`    // Phase priority
-	Flexibility float64       `json:"flexibility"` // Schedule flexibility
-	Dependencies []string     `json:"dependencies"` // Phase dependencies
+	PhaseID      string        `json:"phaseId"`      // Phase ID
+	StartTime    time.Time     `json:"startTime"`    // Phase start time
+	EndTime      time.Time     `json:"endTime"`      // Phase end time
+	Duration     time.Duration `json:"duration"`     // Phase duration
+	BufferTime   time.Duration `json:"bufferTime"`   // Phase buffer time
+	Priority     int           `json:"priority"`     // Phase priority
+	Flexibility  float64       `json:"flexibility"`  // Schedule flexibility
+	Dependencies []string      `json:"dependencies"` // Phase dependencies
 }
 
-
 // Duplicate ablation execution functions removed to avoid redeclarations.
-
 
 // Additional methods would be implemented here for:
 // - executeAblationPhase
@@ -413,13 +412,15 @@ type PhaseSchedule struct {
 // - AblationRecommendation
 // And many other supporting types...
 
-
 // Minimal ExperimentRunner stub
 type ExperimentRunner struct{}
 
 // Add missing stubs for execution plan related types
 type ResourcePlan struct{}
-type PhaseDependency struct{ From string; To string }
+type PhaseDependency struct {
+	From string
+	To   string
+}
 type ExecutionCheckpoint struct{ Name string }
 type RollbackPlan struct{}
 type MonitoringPlan struct{}
@@ -438,7 +439,10 @@ type ScheduleFlexibility struct{ Level string }
 type ScheduleOptimization struct{ Method string }
 
 // Minimal Experiment type
-type Experiment struct{ ID string; Name string }
+type Experiment struct {
+	ID   string
+	Name string
+}
 
 // Minimal placeholder types for analysis/validation/recommendation
 type AblationAnalysis struct{}
@@ -447,13 +451,16 @@ type AblationQualityAssessment struct{}
 type AblationRecommendation struct{}
 
 // Minimal ExperimentResults used later
-type ExperimentResults struct{ ID string; Metrics map[string]float64; Status string }
-
+type ExperimentResults struct {
+	ID      string
+	Metrics map[string]float64
+	Status  string
+}
 
 // NewAblationStudyManager creates a new ablation study manager
-func NewAblationStudyManager(logger *zap.Logger, experimentRunner *ExperimentRunner, 
+func NewAblationStudyManager(logger *zap.Logger, experimentRunner *ExperimentRunner,
 	statisticalAnalyzer *StatisticalAnalyzer) *AblationStudyManager {
-	
+
 	config := &AblationConfig{
 		MaxComponents:         10,
 		MinComponents:         1,
@@ -477,9 +484,9 @@ func NewAblationStudyManager(logger *zap.Logger, experimentRunner *ExperimentRun
 }
 
 // CreateAblationStudy creates a new ablation study
-func (asm *AblationStudyManager) CreateAblationStudy(ctx context.Context, 
+func (asm *AblationStudyManager) CreateAblationStudy(ctx context.Context,
 	baselineExperiment *Experiment, components []AblationComponent) (*AblationStudy, error) {
-	
+
 	asm.logger.Info("Creating ablation study",
 		zap.String("baselineId", baselineExperiment.ID),
 		zap.Int("components", len(components)))
@@ -503,12 +510,12 @@ func (asm *AblationStudyManager) CreateAblationStudy(ctx context.Context,
 		AblationStrategy:   *strategy,
 		ExecutionPlan:      *executionPlan,
 		Status: AblationStatus{
-			Phase:       "created",
-			Progress:    0.0,
-			StartTime:   nil,
-			EndTime:     nil,
+			Phase:        "created",
+			Progress:     0.0,
+			StartTime:    nil,
+			EndTime:      nil,
 			CurrentPhase: "",
-			Message:     "Ablation study created",
+			Message:      "Ablation study created",
 		},
 		Metadata:  make(map[string]interface{}),
 		CreatedAt: time.Now(),
@@ -523,9 +530,9 @@ func (asm *AblationStudyManager) CreateAblationStudy(ctx context.Context,
 }
 
 // RunAblationStudy executes an ablation study
-func (asm *AblationStudyManager) RunAblationStudy(ctx context.Context, 
+func (asm *AblationStudyManager) RunAblationStudy(ctx context.Context,
 	study *AblationStudy) (*AblationResults, error) {
-	
+
 	asm.logger.Info("Running ablation study",
 		zap.String("studyId", study.ID),
 		zap.Int("phases", len(study.ExecutionPlan.Phases)))
@@ -538,13 +545,13 @@ func (asm *AblationStudyManager) RunAblationStudy(ctx context.Context,
 
 	// Initialize results
 	results := &AblationResults{
-		StudyID:           study.ID,
-		BaselineResults:   nil, // Would be populated from baseline experiment
-		AblationResults:   make(map[string]*ExperimentResults),
-		ComponentAnalysis: make(map[string]*ComponentAnalysis),
+		StudyID:             study.ID,
+		BaselineResults:     nil, // Would be populated from baseline experiment
+		AblationResults:     make(map[string]*ExperimentResults),
+		ComponentAnalysis:   make(map[string]*ComponentAnalysis),
 		InteractionAnalysis: &InteractionAnalysis{},
-		Summary:           &AblationSummary{},
-		ExecutionTime:     time.Now(),
+		Summary:             &AblationSummary{},
+		ExecutionTime:       time.Now(),
 	}
 
 	// Execute phases
@@ -567,7 +574,7 @@ func (asm *AblationStudyManager) RunAblationStudy(ctx context.Context,
 				zap.String("studyId", study.ID),
 				zap.String("phaseId", phase.ID),
 				zap.Error(err))
-			
+
 			study.Status.Phase = "failed"
 			study.Status.Message = fmt.Sprintf("Phase %s failed: %v", phase.Name, err)
 			return nil, fmt.Errorf("phase %s execution failed: %w", phase.ID, err)
@@ -670,10 +677,10 @@ func (asm *AblationStudyManager) createAblationStrategy(components []AblationCom
 
 	// Create interaction analysis strategy
 	interactionAnalysis := InteractionAnalysisStrategy{
-		Enabled:   asm.config.InteractionAnalysis,
-		Method:    "pairwise",
-		MaxOrder:  2,
-		Threshold: 0.05,
+		Enabled:    asm.config.InteractionAnalysis,
+		Method:     "pairwise",
+		MaxOrder:   2,
+		Threshold:  0.05,
 		Correction: "bonferroni",
 	}
 
@@ -733,9 +740,9 @@ func (asm *AblationStudyManager) createAblationStrategy(components []AblationCom
 }
 
 // createExecutionPlan creates an execution plan for the ablation study
-func (asm *AblationStudyManager) createExecutionPlan(components []AblationComponent, 
+func (asm *AblationStudyManager) createExecutionPlan(components []AblationComponent,
 	strategy *AblationStrategy) *AblationExecutionPlan {
-	
+
 	// Sort components by priority for execution order
 	sortedComponents := make([]AblationComponent, len(components))
 	copy(sortedComponents, components)
@@ -801,12 +808,12 @@ func (asm *AblationStudyManager) createExecutionPlan(components []AblationCompon
 }
 
 // createExecutionSchedule creates an execution schedule for the phases
-func (asm *AblationStudyManager) createExecutionSchedule(phases []ExecutionPhase, 
+func (asm *AblationStudyManager) createExecutionSchedule(phases []ExecutionPhase,
 	startTime time.Time) *ExecutionSchedule {
-	
+
 	phaseSchedules := make([]PhaseSchedule, len(phases))
 	currentTime := startTime
-	
+
 	for i, phase := range phases {
 		phaseSchedule := PhaseSchedule{
 			PhaseID:   phase.ID,
@@ -818,9 +825,9 @@ func (asm *AblationStudyManager) createExecutionSchedule(phases []ExecutionPhase
 		phaseSchedules[i] = phaseSchedule
 		currentTime = phaseSchedule.EndTime.Add(5 * time.Minute) // 5-minute buffer between phases
 	}
-	
+
 	totalDuration := currentTime.Sub(startTime)
-	
+
 	return &ExecutionSchedule{
 		StartTime: startTime,
 		EndTime:   currentTime,
@@ -838,13 +845,13 @@ func (asm *AblationStudyManager) createExecutionSchedule(phases []ExecutionPhase
 
 // AblationResults represents the results of an ablation study
 type AblationResults struct {
-	StudyID             string                           `json:"studyId"`             // Study ID
-	BaselineResults     *ExperimentResults               `json:"baselineResults"`     // Baseline experiment results
-	AblationResults     map[string]*ExperimentResults    `json:"ablationResults"`     // Ablation experiment results
-	ComponentAnalysis   map[string]*ComponentAnalysis    `json:"componentAnalysis"`   // Component analysis results
-	InteractionAnalysis *InteractionAnalysis             `json:"interactionAnalysis"` // Interaction analysis results
-	Summary             *AblationSummary                 `json:"summary"`             // Study summary
-	ExecutionTime       time.Time                        `json:"executionTime"`       // Execution timestamp
+	StudyID             string                        `json:"studyId"`             // Study ID
+	BaselineResults     *ExperimentResults            `json:"baselineResults"`     // Baseline experiment results
+	AblationResults     map[string]*ExperimentResults `json:"ablationResults"`     // Ablation experiment results
+	ComponentAnalysis   map[string]*ComponentAnalysis `json:"componentAnalysis"`   // Component analysis results
+	InteractionAnalysis *InteractionAnalysis          `json:"interactionAnalysis"` // Interaction analysis results
+	Summary             *AblationSummary              `json:"summary"`             // Study summary
+	ExecutionTime       time.Time                     `json:"executionTime"`       // Execution timestamp
 }
 
 // ComponentAnalysis represents analysis of a single component
@@ -860,33 +867,33 @@ type ComponentAnalysis struct {
 
 // ComponentImpact represents the impact of ablating a component
 type ComponentImpact struct {
-	PerformanceChange float64                `json:"performanceChange"` // Performance change
-	MetricChanges     map[string]float64     `json:"metricChanges"`     // Metric changes
-	StatisticalTests  []StatisticalTest      `json:"statisticalTests"`  // Statistical test results
-	EffectSizes       map[string]EffectSize  `json:"effectSizes"`       // Effect sizes
-	Confidence        map[string]ConfidenceInterval `json:"confidence"` // Confidence intervals
-	Significance      map[string]bool        `json:"significance"`      // Statistical significance
+	PerformanceChange float64                       `json:"performanceChange"` // Performance change
+	MetricChanges     map[string]float64            `json:"metricChanges"`     // Metric changes
+	StatisticalTests  []StatisticalTest             `json:"statisticalTests"`  // Statistical test results
+	EffectSizes       map[string]EffectSize         `json:"effectSizes"`       // Effect sizes
+	Confidence        map[string]ConfidenceInterval `json:"confidence"`        // Confidence intervals
+	Significance      map[string]bool               `json:"significance"`      // Statistical significance
 }
 
 // ComponentImportance represents the importance of a component
 type ComponentImportance struct {
-	Score           float64 `json:"score"`           // Importance score
-	Rank            int     `json:"rank"`            // Importance rank
-	Percentile      float64 `json:"percentile"`      // Importance percentile
-	Category        string  `json:"category"`        // Importance category
-	Interpretation  string  `json:"interpretation"`  // Importance interpretation
-	Confidence      float64 `json:"confidence"`      // Confidence in importance
+	Score          float64 `json:"score"`          // Importance score
+	Rank           int     `json:"rank"`           // Importance rank
+	Percentile     float64 `json:"percentile"`     // Importance percentile
+	Category       string  `json:"category"`       // Importance category
+	Interpretation string  `json:"interpretation"` // Importance interpretation
+	Confidence     float64 `json:"confidence"`     // Confidence in importance
 }
 
 // DependencyAnalysis represents dependency analysis results
 type DependencyAnalysis struct {
-	DirectDependencies   []string               `json:"directDependencies"`   // Direct dependencies
-	IndirectDependencies []string               `json:"indirectDependencies"` // Indirect dependencies
-	Dependents           []string               `json:"dependents"`           // Components that depend on this
-	CriticalPath         []string               `json:"criticalPath"`         // Critical path dependencies
-	DependencyStrength   map[string]float64     `json:"dependencyStrength"`   // Dependency strength scores
-	CircularDependencies [][]string             `json:"circularDependencies"` // Circular dependencies
-	DependencyGraph      DependencyGraph        `json:"dependencyGraph"`      // Dependency graph
+	DirectDependencies   []string           `json:"directDependencies"`   // Direct dependencies
+	IndirectDependencies []string           `json:"indirectDependencies"` // Indirect dependencies
+	Dependents           []string           `json:"dependents"`           // Components that depend on this
+	CriticalPath         []string           `json:"criticalPath"`         // Critical path dependencies
+	DependencyStrength   map[string]float64 `json:"dependencyStrength"`   // Dependency strength scores
+	CircularDependencies [][]string         `json:"circularDependencies"` // Circular dependencies
+	DependencyGraph      DependencyGraph    `json:"dependencyGraph"`      // Dependency graph
 }
 
 // ComponentInteraction represents an interaction between components
@@ -904,25 +911,25 @@ type ComponentInteraction struct {
 
 // InteractionAnalysis represents comprehensive interaction analysis
 type InteractionAnalysis struct {
-	PairwiseInteractions []ComponentInteraction    `json:"pairwiseInteractions"` // Pairwise interactions
+	PairwiseInteractions    []ComponentInteraction   `json:"pairwiseInteractions"`    // Pairwise interactions
 	HigherOrderInteractions []HigherOrderInteraction `json:"higherOrderInteractions"` // Higher-order interactions
-	InteractionNetwork   InteractionNetwork        `json:"interactionNetwork"`   // Interaction network
-	InteractionClusters  []InteractionCluster      `json:"interactionClusters"`  // Interaction clusters
-	SynergyAnalysis      SynergyAnalysis          `json:"synergyAnalysis"`      // Synergy analysis
-	RedundancyAnalysis   RedundancyAnalysis       `json:"redundancyAnalysis"`   // Redundancy analysis
+	InteractionNetwork      InteractionNetwork       `json:"interactionNetwork"`      // Interaction network
+	InteractionClusters     []InteractionCluster     `json:"interactionClusters"`     // Interaction clusters
+	SynergyAnalysis         SynergyAnalysis          `json:"synergyAnalysis"`         // Synergy analysis
+	RedundancyAnalysis      RedundancyAnalysis       `json:"redundancyAnalysis"`      // Redundancy analysis
 }
 
 // AblationSummary represents a summary of the ablation study
 type AblationSummary struct {
-	TotalComponents      int                    `json:"totalComponents"`      // Total components analyzed
-	CriticalComponents   []string               `json:"criticalComponents"`   // Critical components
-	RedundantComponents  []string               `json:"redundantComponents"`  // Redundant components
-	ComponentRanking     []ComponentRanking     `json:"componentRanking"`     // Component importance ranking
-	KeyFindings          []string               `json:"keyFindings"`          // Key findings
-	Recommendations      []string               `json:"recommendations"`      // Recommendations
-	PerformanceImpact    PerformanceImpactSummary `json:"performanceImpact"`  // Performance impact summary
-	StatisticalSummary   StatisticalSummary     `json:"statisticalSummary"`   // Statistical summary
-	QualityAssessment    QualityAssessment      `json:"qualityAssessment"`    // Quality assessment
+	TotalComponents     int                      `json:"totalComponents"`     // Total components analyzed
+	CriticalComponents  []string                 `json:"criticalComponents"`  // Critical components
+	RedundantComponents []string                 `json:"redundantComponents"` // Redundant components
+	ComponentRanking    []ComponentRanking       `json:"componentRanking"`    // Component importance ranking
+	KeyFindings         []string                 `json:"keyFindings"`         // Key findings
+	Recommendations     []string                 `json:"recommendations"`     // Recommendations
+	PerformanceImpact   PerformanceImpactSummary `json:"performanceImpact"`   // Performance impact summary
+	StatisticalSummary  StatisticalSummary       `json:"statisticalSummary"`  // Statistical summary
+	QualityAssessment   QualityAssessment        `json:"qualityAssessment"`   // Quality assessment
 }
 
 // ComponentRanking represents component ranking by importance
@@ -964,7 +971,10 @@ type ExperimentRunner struct{}
 
 // Add missing stubs for execution plan related types
 type ResourcePlan struct{}
-type PhaseDependency struct{ From string; To string }
+type PhaseDependency struct {
+	From string
+	To   string
+}
 type ExecutionCheckpoint struct{ Name string }
 type RollbackPlan struct{}
 type MonitoringPlan struct{}
@@ -983,7 +993,10 @@ type ScheduleFlexibility struct{ Level string }
 type ScheduleOptimization struct{ Method string }
 
 // Minimal Experiment type
-type Experiment struct{ ID string; Name string }
+type Experiment struct {
+	ID   string
+	Name string
+}
 
 // Minimal placeholder types for analysis/validation/recommendation
 type AblationAnalysis struct{}
@@ -992,4 +1005,8 @@ type AblationQualityAssessment struct{}
 type AblationRecommendation struct{}
 
 // Minimal ExperimentResults used later
-type ExperimentResults struct{ ID string; Metrics map[string]float64; Status string }
+type ExperimentResults struct {
+	ID      string
+	Metrics map[string]float64
+	Status  string
+}

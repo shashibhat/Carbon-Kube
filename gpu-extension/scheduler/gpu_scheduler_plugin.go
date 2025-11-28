@@ -1,3 +1,4 @@
+//go:build gpu
 package scheduler
 
 import (
@@ -127,10 +128,7 @@ func New(obj runtime.Object, h framework.Handle) (framework.Plugin, error) {
 		return nil, fmt.Errorf("failed to create logger: %v", err)
 	}
 
-	kubeClient, err := kubernetes.NewForConfig(h.ClientSet().RESTConfig())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %v", err)
-	}
+    kubeClient := h.ClientSet()
 
 	// Initialize Redis client
 	redisClient := redis.NewClient(&redis.Options{
@@ -597,9 +595,11 @@ func (s *CarbonAwareGPUScheduler) calculateSLAScore(slaMetrics SLAMetrics,
 		score -= 30 // Penalty for recent SLA violations
 	}
 	
-	return math.Max(0, math.Min(100, score))
+    return math.Max(0, math.Min(100, score))
 }
 
 // calculateMigrationBonus calculates bonus for migration-friendly nodes
 func (s *CarbonAwareGPUScheduler) calculateMigrationBonus(ctx context.Context, 
-	nodeName string, reqs GPUWorkloadRequirements) float64 {
+    nodeName string, reqs GPUWorkloadRequirements) float64 {
+    return 0
+}

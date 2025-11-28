@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-kube-api
+  labels:
+    app: carbon-kube-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carbon-kube-api
+  template:
+    metadata:
+      labels:
+        app: carbon-kube-api
+    spec:
+      serviceAccountName: carbon-kube
+      containers:
+        - name: api
+          image: {{ .Values.images.api }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8081

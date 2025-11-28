@@ -1,3 +1,4 @@
+//go:build katalyst
 package katalyst
 
 import (
@@ -493,11 +494,9 @@ func (c *CarbonQoSController) updateZoneQoSProfile(ctx context.Context, zone str
 
 // updateMetrics updates Prometheus metrics
 func (c *CarbonQoSController) updateMetrics(zone string, carbonIntensity float64, profile *QoSProfile) {
-	carbonClass := c.getCarbonClass(carbonIntensity)
-	
-	// Update carbon efficiency metric
-	efficiency := profile.ResourceGuarantee / carbonIntensity
-	c.metrics.carbonEfficiency.WithLabelValues("", zone, profile.Name).Set(efficiency)
+    // Update carbon efficiency metric
+    efficiency := profile.ResourceGuarantee / carbonIntensity
+    c.metrics.carbonEfficiency.WithLabelValues("", zone, profile.Name).Set(efficiency)
 }
 
 // updateEnergyMetrics updates energy consumption metrics
