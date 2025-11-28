@@ -1,0 +1,34 @@
+apiVersion: carbonkube.io/v1
+kind: CarbonPolicy
+metadata:
+  name: sample-carbon-policy
+  namespace: default
+spec:
+  objectives:
+    carbonWeight: 0.4
+    costWeight: 0.2
+    slaRiskWeight: 0.2
+    dataGravityWeight: 0.2
+  constraints:
+    maxSLAIncreasePercent: 10
+    maxExtraLatencyMs: 150
+    maxCarbonPerDay: 100
+    maxCarbonPerJob: 50
+  shifting:
+    allowTemporalShifting: true
+    maxDelay: "2h"
+    minGreenWindow: "30m"
+  spatial:
+    allowedRegions:
+      - us-east-1
+      - eu-west-1
+    avoidRegions:
+      - ap-south-1
+    carbonThresholds:
+      highCarbonLimit: 400
+      extremeCarbonLimit: 600
+  adaptive:
+    enableAutoTune: true
+    learningRate: 0.05
+    explorationRate: 0.1
+    targetCarbonReductionPercent: 20

@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-kube-webhook
+  labels:
+    app: carbon-kube-webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carbon-kube-webhook
+  template:
+    metadata:
+      labels:
+        app: carbon-kube-webhook
+    spec:
+      serviceAccountName: carbon-kube
+      containers:
+        - name: webhook
+          image: {{ .Values.images.webhook }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: https
+              containerPort: 8443

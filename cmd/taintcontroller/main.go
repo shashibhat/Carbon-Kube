@@ -6,7 +6,7 @@ import (
     "time"
     "os"
 
-    "github.com/example/carbon-kube/pkg/emission"
+    "github.com/shashibhat/Carbon-Kube/pkg/emission"
 )
 
 // Node taint controller entrypoint. This uses the in-memory score client

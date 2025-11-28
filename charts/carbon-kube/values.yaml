@@ -13,6 +13,14 @@ image:
   tag: "v1.0.0"
   pullPolicy: IfNotPresent
 
+images:
+  operator: carbon-kube/operator:v1.0.0
+  api: carbon-kube/api:v1.0.0
+  webhook: carbon-kube/webhook:v1.0.0
+
+crds:
+  enabled: true
+
 # Service account configuration
 serviceAccount:
   create: true

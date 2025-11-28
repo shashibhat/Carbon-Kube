@@ -1,3 +1,4 @@
+//go:build katalyst
 package emissionplugin
 
 import (
@@ -331,10 +332,10 @@ func (p *EmissionPlugin) Name() string {
 // Score implements the Katalyst ScorePlugin interface
 // Calculates emission scores using the equation: E = ∫ P_IT * PUE * MOER dt
 func (p *EmissionPlugin) Score(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeName string) (int64, *framework.Status) {
-	nodeInfo := p.handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
-	if nodeInfo == nil {
-		return 0, framework.NewStatus(framework.Error, fmt.Sprintf("node %s not found", nodeName))
-	}
+    nodeInfo, err := p.handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
+    if err != nil || nodeInfo == nil {
+        return 0, framework.NewStatus(framework.Error, fmt.Sprintf("node %s not found", nodeName))
+    }
 
 	p.logger.Debug("EmissionPlugin scoring node",
 		zap.String("pod", pod.Name),

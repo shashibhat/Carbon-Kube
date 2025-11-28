@@ -1,21 +1,19 @@
+//go:build gpu
 package slamanager
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"math"
-	"sort"
-	"sync"
-	"time"
+    "context"
+    "encoding/json"
+    "fmt"
+    "math"
+    "sync"
+    "time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"go.uber.org/zap"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+    "k8s.io/client-go/kubernetes"
 )
 
 // SLAManager manages SLA constraints and guarantees for GPU workloads

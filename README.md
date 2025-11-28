@@ -5,7 +5,6 @@
 [![Python CDK](https://img.shields.io/badge/AWS%20CDK-Python-orange)](https://aws.amazon.com/cdk/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.28%2B-blue)](https://kubernetes.io/)
 [![Go](https://img.shields.io/badge/Go-1.21%2B-green)](https://go.dev/)
-[![Katalyst](https://img.shields.io/badge/Katalyst-v0.7.0%2B-purple)](https://github.com/kubewharf/katalyst-core)
 [![Helm](https://img.shields.io/badge/Helm-v3.12%2B-blue)](https://helm.sh/)
 [![Documentation](https://img.shields.io/badge/Docs-Available-brightgreen)](https://carbon-kube.github.io/docs/)
 
@@ -13,12 +12,11 @@
 
 **Carbon-Kube** is a lightweight, production-ready Kubernetes scheduler extension designed to minimize the carbon footprint of big data workloads (e.g., Spark and Flink jobs) without compromising latency or SLA compliance. By integrating real-time carbon intensity forecasts from public APIs (Electricity Maps and NOAA), it preemptively migrates non-urgent jobs to lower-emission AWS zones or time slots—achieving 5-15% CO₂ reductions on petabyte-scale pipelines.
 
-Built on your contributions to the Katalyst project (e.g., 25% resource overhead reduction), this plugin hooks into existing EKS/HPA stacks via a simple Go mutator. It's deployable in one click using AWS CDK, with built-in monitoring via Prometheus/Grafana for emissions tracking and savings visualization.
+
 
 ### Why Carbon-Kube?
 - **Sustainability Meets Scale**: Data centers consume ~2% of global electricity, with big data jobs contributing disproportionately. This tool shifts workloads to "green" windows (e.g., nighttime renewables in Oregon) while preserving 98% uptime.
-- **Zero-Refactor Integration**: No infra overhauls—extends Katalyst's scoring phase with an `emission_score` metric.
-- **EB1-Ready Artifacts**: Includes reproducible EKS labs, Grafana dashboards, and Jupyter notebooks for performance graphs, ideal for demonstrating original contributions in green AI.
+- **Zero-Refactor Integration**: No infra overhauls—extends k8s scheduler scoring phase with an `emission_score` metric.
 
 Key Impacts (from EKS evals):
 - **Emissions Savings**: 5-15% CO₂ cut (e.g., 420kg vs. 500kg baseline per 1PB run).
@@ -26,38 +24,53 @@ Key Impacts (from EKS evals):
 - **Adoption Ease**: Helm chart + CDK stack = deploy in 20 minutes.
 
 ## Features
-- **Real-Time Carbon Forecasting**: Polls zonal intensity (gCO₂/kWh) every 5 minutes from Electricity Maps API; caches NOAA weather for 24h predictions.
-- **Preemptive Migration**: Taints high-emission nodes, reschedules Spark/Flink jobs via Karpenter (inter-cluster federation).
-- **Adaptive Thresholds**: Lightweight RL (replay-based) tunes migration triggers to balance emissions vs. latency risks.
-- **Monitoring & Viz**: Exports metrics to Prometheus; Grafana dashboards for CO₂ savings, job latencies, and migration events.
-- **Privacy-Focused**: Optional federated gossip protocol for multi-tenant clusters (no raw data sharing).
-- **One-Click Testing**: CDK deploys full EKS lab with dummy 100GB Flink jobs; auto-teardown.
-- **Open-Source Extensibility**: Apache 2.0; Helm values.yaml for custom zones/thresholds.
+- **CarbonPolicy & CarbonJobSpec CRDs**: Declarative policies and job specs define objectives, constraints, budgets, mobility, and data-affinity.
+- **Controllers**: Policy controller normalizes weights and publishes a ConfigMap; Job controller computes DataGravity/Mobility/SLA, selects region, and writes placement hints.
+- **Dependency-Aware Scheduling**: Penalty accounts for egress cost and cross-service latency: `penalty = egressCost + latencyToKafkaMs/10 + latencyToDBMs/10 + (20 if !s3ReplicationAvailable else 0)`, then clamp to `[0,100]`.
+- **Region Selector**: Picks the lowest-carbon region that respects `allowedRegions`, `avoidRegions`, `maxExtraLatencyMs`, and mobility constraints.
+- **Multi-Objective Scoring**: Normalized weights combine Carbon, Cost, SLA risk, and DataGravity: `score = clamp(w_c*Carbon + w_cost*Cost + w_sla*SLA + w_dg*DataGravity - penalties, 0, 100)`.
+- **RL-Based Auto-Tuning (MORL)**: Adjusts α,β,γ,δ and temporal shifting under constraints, with reward `R = -α*CO₂ - β*Cost - γ*SLA_Violations - δ*DataGravityPenalty`.
+- **Webhook**: Mutating webhook injects `preferredRegion` label and `carbonPriorityScore` annotation for scheduler consumption.
+- **API Endpoints**: `/v1/policy/{ns}/{name}/resolved`, `/v1/job/{ns}/{name}/analysis`, `/v1/rl/update` for policy resolution, job analysis, and RL updates.
+- **Monitoring & Viz**: Prometheus metrics and Grafana dashboards for CO₂ savings, job latencies, and migrations.
 
 
 ## Architecture Overview
 
 High-level flow:
-1. **Poll Phase**: CronJob queries APIs → Updates ConfigMap with zonal scores.
-2. **Score Phase**: Go mutator in Katalyst adds `emission_score = intensity × CPU_req` to node ranking.
-3. **Migrate Phase**: If score > threshold, taint node → Karpenter reschedules to low-emission zone.
-4. **Tune Phase**: RL replay (Python sidecar) adjusts thresholds based on post-migration SLAs.
-5. **Observe Phase**: Prometheus scrapes metrics; Grafana plots savings.
+1. **Poll Phase**: CronJob queries carbon APIs → updates carbon intensity ConfigMap.
+2. **Policy Phase**: `CarbonPolicy` reconciled → normalized weights ConfigMap published.
+3. **Job Phase**: `CarbonJobSpec` reconciled → DataGravity/Mobility/SLA computed → region selected → annotations set.
+4. **Webhook & Scheduler**: Mutating webhook injects labels/annotations → carbon-kube plugins score pods; kube-scheduler places workloads.
+5. **RL Tuning**: MORL agent adjusts α,β,γ,δ and shifting under constraints; pushes updates via API/ConfigMap.
+6. **Observe**: Prometheus scrapes metrics; Grafana visualizes savings and performance.
 
 ```mermaid
 graph TD
-    A["Carbon APIs \n (Electricity Maps/NOAA)"] --> B["Poll Service \n (Python Async)"]
-    B --> C["CarbonScore CRD"]
-    C --> D["Scheduling Mutator<br>(Go)"]
-    D --> E["Node Tainter Controller<br>(Go)"]
-    E --> F["Karpenter / Rescheduler"]
-    F --> G["Workload Migration"]
-    G --> H["Metrics Exporter<br>(Go)"]
-    H --> I["Prometheus / Grafana"]
-    G --> J["RL Tuner<br>(Python)"]
-    J --> D
+    A["Carbon APIs\n(ElectricityMaps/NOAA)"] --> B["Poll Service\n(Python)"]
+    B --> CM1["ConfigMap: carbon-intensity"]
+
+    P["CarbonPolicy CRD"] --> PC["Policy Controller\n(Go)"]
+    PC --> CM2["ConfigMap: policy-normalized"]
+
+    J["CarbonJobSpec CRD"] --> JC["Job Controller\n(Go)"]
+    JC --> DA["Dependency Analyzer"]
+    JC --> RS["Region Selector"]
+    RS --> ANN["Annotations: placement-hint, carbonPriorityScore"]
+
+    ANN --> WH["Scheduler Webhook\n(JSONPatch)"]
+    WH --> S["Kube-Scheduler"]
+    S --> G["Workload Placement"]
+
+    G --> M["Metrics Exporter\n(Go)"]
+    M --> PR["Prometheus/Grafana"]
+
+    RL["RL Engine\n(MORL)"] --> PC
+    RL --> JC
+    RL --> CM2
+
     subgraph "Kubernetes Cluster"
-        C; D; E; H
+        CM1; CM2; PC; JC; DA; RS; WH; S; M
     end
 ```
 
@@ -284,7 +297,8 @@ Each phase lasts **2 hours** and runs the same Spark workload.
 
 #   Results and Analysis
 
-In this section we presentresults run on lab consistent with the behavior observed in our prototype implementation. The precise values can be regenerated by re‑running `run_experiment.sh` and the analysis script in `scripts/analyze_results.py`.
+In this section we present results run on lab consistent with the behavior observed in our prototype implementation. The precise values can be regenerated by re‑running `run_experiment.sh` and the analysis script in `scripts/analyze_results.py`.
+
 
 ##   CO₂ Savings
 
@@ -328,7 +342,7 @@ Table 3 summarizes the observed latency overhead, derived from the Prometheus ga
 Across the 2‑hour window and multiple SparkPi runs, the **median** increase in job latency is below **2%**, well within typical SLO budgets for batch analytics jobs. This suggests that moderate carbon‑aware biasing can be deployed without materially impacting end‑to‑end performance for this class of workloads.
 
 
-# Appendix A – JSON Artifacts (Illustrative)
+# Appendix A – JSON Artifacts 
 
 This appendix lists **representative JSON blobs** corresponding to the metrics collected during a 2‑hour baseline and carbon‑aware run. These blobs follow the Prometheus HTTP API format and can be regenerated by re‑running:
 
