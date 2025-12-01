@@ -8,8 +8,8 @@ global:
 
 # Image configuration
 image:
-  registry: docker.io
-  repository: carbon-kube/carbon-kube
+  registry: 602695720187.dkr.ecr.us-west-2.amazonaws.com
+  repository: carbon-kube
   tag: "latest"
   pullPolicy: IfNotPresent
 
@@ -42,7 +42,7 @@ rbac:
 
 # Scheduler plugin configuration
 scheduler:
-  enabled: true
+  enabled: false
   name: carbon-kube-scheduler
   replicas: 1
   image:
@@ -488,3 +488,15 @@ gpu:
 nvidia-operator:
   nvidia:
     enabled: false  # Controlled by gpu.nvidia.enabled
+mutator:
+  enabled: true
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}

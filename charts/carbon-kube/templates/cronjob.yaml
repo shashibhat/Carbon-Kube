@@ -43,7 +43,7 @@ spec:
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               command:
                 - python3
-                - /app/poller.py
+                - /app/cmd/poll/main.py
               args:
                 - --config
                 - /etc/carbon-kube/poller-config.yaml

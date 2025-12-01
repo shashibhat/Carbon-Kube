@@ -1,0 +1,46 @@
+{{- if .Values.mutator.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-kube-mutator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mutator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "carbon-kube.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mutator
+  template:
+    metadata:
+      labels:
+        {{- include "carbon-kube.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mutator
+    spec:
+      serviceAccountName: carbon-kube-mutator
+      containers:
+        - name: mutator
+          image: {{ include "carbon-kube.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 9090
+          resources:
+            {{- toYaml .Values.mutator.resources | nindent 12 }}
+          env:
+            {{- include "carbon-kube.commonEnvVars" . | nindent 12 }}
+      {{- with .Values.mutator.nodeSelector | default .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mutator.affinity | default .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mutator.tolerations | default .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

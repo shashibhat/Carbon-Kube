@@ -21,7 +21,7 @@ FROM --platform=$TARGETPLATFORM debian:bookworm-slim
 # Install Python + pip + dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3 python3-requests python3-pip python3-kubernetes ca-certificates curl && \
+        python3 python3-pip ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -35,6 +35,9 @@ COPY entrypoint.sh /usr/local/bin/carbon-kube
 ARG K8S_VERSION=v1.28.4
 RUN curl -fsSL "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kube-scheduler" -o /usr/local/bin/kube-scheduler && \
     chmod +x /usr/local/bin/kube-scheduler
+
+# Python dependencies
+RUN pip3 install --no-cache-dir requests kubernetes
 
 RUN chmod +x /usr/local/bin/carbon-kube
 
