@@ -39,7 +39,7 @@ spec:
             - name: poller
               securityContext:
                 {{- include "carbon-kube.securityContext" . | nindent 16 }}
-              image: {{ include "carbon-kube.pollerImage" . }}
+              image: {{ include "carbon-kube.image" . }}
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               command:
                 - python3
@@ -127,7 +127,7 @@ spec:
             - name: rl-tuner
               securityContext:
                 {{- include "carbon-kube.securityContext" . | nindent 16 }}
-              image: {{ include "carbon-kube.rlTunerImage" . }}
+              image: {{ include "carbon-kube.image" . }}
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               command:
                 - python3

@@ -26,11 +26,7 @@ type RegionSelectorOutput struct {
 
 func fetchCarbon(api string, regions []string) ([]RegionScore, error) {
     if api == "" {
-        out := make([]RegionScore, 0, len(regions))
-        for i, r := range regions {
-            out = append(out, RegionScore{Region: r, CarbonIntensity: 300 + i*10})
-        }
-        return out, nil
+        return nil, errors.New("carbon API endpoint required")
     }
     resp, err := http.Get(api)
     if err != nil {
@@ -82,4 +78,3 @@ func SelectRegion(input RegionSelectorInput, latency map[string]int) (RegionSele
     }
     return RegionSelectorOutput{}, errors.New("no region satisfies constraints")
 }
-

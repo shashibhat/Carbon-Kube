@@ -1,3 +1,4 @@
+{{- if .Values.api.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,8 +18,9 @@ spec:
       serviceAccountName: carbon-kube
       containers:
         - name: api
-          image: {{ .Values.images.api }}
+          image: {{ include "carbon-kube.image" . }}
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8081
+{{- end }}

@@ -1,0 +1,12 @@
+dependencies:
+- name: prometheus
+  repository: https://prometheus-community.github.io/helm-charts
+  version: 15.18.0
+- name: grafana
+  repository: https://grafana.github.io/helm-charts
+  version: 6.61.2
+- name: nvidia-operator
+  repository: file://./charts/nvidia-operator
+  version: 1.0.0
+digest: sha256:81d58b9431d4d5373ed715f9bd16b2d0d9051eeca9ddf76e0423a799f39e7656
+generated: "2025-11-28T16:18:56.310008-08:00"

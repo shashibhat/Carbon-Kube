@@ -1,3 +1,4 @@
+{{- if .Values.operator.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,7 +18,7 @@ spec:
       serviceAccountName: carbon-kube
       containers:
         - name: operator
-          image: {{ .Values.images.operator }}
+          image: {{ include "carbon-kube.image" . }}
           imagePullPolicy: IfNotPresent
           env:
             - name: NAMESPACE
@@ -29,3 +30,4 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+{{- end }}

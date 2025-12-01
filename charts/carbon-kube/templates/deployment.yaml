@@ -41,7 +41,7 @@ spec:
         - name: scheduler
           securityContext:
             {{- include "carbon-kube.securityContext" . | nindent 12 }}
-          image: {{ include "carbon-kube.schedulerImage" . }}
+          image: {{ include "carbon-kube.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - /usr/local/bin/kube-scheduler

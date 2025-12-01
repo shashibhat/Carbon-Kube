@@ -10,13 +10,22 @@ global:
 image:
   registry: docker.io
   repository: carbon-kube/carbon-kube
-  tag: "v1.0.0"
+  tag: "latest"
   pullPolicy: IfNotPresent
 
 images:
-  operator: carbon-kube/operator:v1.0.0
-  api: carbon-kube/api:v1.0.0
-  webhook: carbon-kube/webhook:v1.0.0
+  operator: carbon-kube/operator:latest
+  api: carbon-kube/api:latest
+  webhook: carbon-kube/webhook:latest
+
+operator:
+  enabled: true
+
+api:
+  enabled: true
+
+webhook:
+  enabled: true
 
 crds:
   enabled: true
@@ -38,7 +47,7 @@ scheduler:
   replicas: 1
   image:
     repository: carbon-kube/scheduler
-    tag: "v1.0.0"
+    tag: "latest"
   resources:
     limits:
       cpu: 500m
@@ -56,7 +65,7 @@ poller:
   schedule: "*/5 * * * *"  # Every 5 minutes
   image:
     repository: carbon-kube/poller
-    tag: "v1.0.0"
+    tag: "latest"
   resources:
     limits:
       cpu: 200m
@@ -83,7 +92,7 @@ rlTuner:
   schedule: "0 */6 * * *"  # Every 6 hours
   image:
     repository: carbon-kube/rl-tuner
-    tag: "v1.0.0"
+    tag: "latest"
   resources:
     limits:
       cpu: 1000m
@@ -354,7 +363,6 @@ networkPolicy:
 securityContext:
   runAsNonRoot: true
   runAsUser: 65534
-  fsGroup: 65534
 
 # Pod Security Context
 podSecurityContext:
