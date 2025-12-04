@@ -9,7 +9,7 @@ NAMESPACE := carbon-kube
 
 # Go variables
 GO_MODULE := github.com/your-org/carbon-kube
-GO_PACKAGES := ./pkg/...
+GO_PACKAGES := ./controllers ./pkg/emission
 GO_BUILD_FLAGS := -ldflags "-X main.version=$(VERSION)"
 GOOS ?= linux
 GOARCH ?= amd64
@@ -62,13 +62,23 @@ setup-go: ## Set up Go dependencies
 
 # Building
 .PHONY: build
-build: build-go build-python ## Build all components
+build: build-go build-controllers build-kepler-attr build-python ## Build all components
 
 .PHONY: build-go
 build-go: ## Build Go scheduler plugin
 	@echo "Building Go scheduler plugin..."
 	mkdir -p bin
 	CGO_ENABLED=1 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -buildmode=plugin -o bin/scheduler-plugin.so ./pkg/emissionplugin/cmd/scheduler
+
+.PHONY: build-controllers
+build-controllers: ## Build controllers binary
+	@echo "Building controllers binary..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o bin/controllers ./cmd/controllers
+
+.PHONY: build-kepler-attr
+build-kepler-attr: ## Build kepler attribution binary
+	@echo "Building kepler-attr binary..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o bin/kepler-attr ./cmd/kepler-attr
 
 .PHONY: build-python
 build-python: setup-python ## Build Python components
@@ -104,7 +114,7 @@ test: test-go test-python ## Run all tests
 .PHONY: test-go
 test-go: ## Run Go unit tests
 	@echo "Running Go unit tests..."
-	go test -v -race -coverprofile=coverage.out $(GO_PACKAGES)
+	go test -tags katalyst -v -race -coverprofile=coverage.out $(GO_PACKAGES)
 	go tool cover -html=coverage.out -o coverage.html
 
 .PHONY: test-python

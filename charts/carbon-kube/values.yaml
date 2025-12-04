@@ -21,6 +21,12 @@ images:
 operator:
   enabled: true
 
+controllers:
+  enabled: true
+
+keplerAttr:
+  enabled: true
+
 api:
   enabled: true
 

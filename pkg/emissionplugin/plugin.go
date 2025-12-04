@@ -2,15 +2,17 @@
 package emissionplugin
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"math"
-	"net/http"
-	"os/exec"
-	"strconv"
-	"strings"
-	"time"
+    "context"
+    "encoding/json"
+    "fmt"
+    "math"
+    "net/http"
+    "net/url"
+    "os"
+    "os/exec"
+    "strconv"
+    "strings"
+    "time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,11 +20,14 @@ import (
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/klog/v2"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
+    "k8s.io/client-go/kubernetes"
+    "k8s.io/client-go/rest"
+    "k8s.io/klog/v2"
+    "k8s.io/apimachinery/pkg/runtime"
+    "k8s.io/kubernetes/pkg/scheduler/framework"
+    "k8s.io/client-go/dynamic"
+    "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+    "k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 const (
@@ -373,10 +378,18 @@ func (p *EmissionPlugin) Score(ctx context.Context, state *framework.CycleState,
 	// Calculate emission score: E = P_IT * PUE * MOER
 	// This represents gCO2 per hour for this workload
 	emissionRate := totalPowerKW * pue * moer
-	
-	// Normalize to 0-100 scale (lower emissions = higher score for scheduling preference)
-	// We invert the score so lower emissions get higher scheduling priority
-	normalizedScore := p.normalizeEmissionScore(emissionRate)
+    nearTerm := p.nearTermCI(zone, 10)
+    cNorm := p.normalizeCI(nearTerm)
+    carbonTerm := 1.0 - cNorm
+    slaTerm := p.slaUrgency(pod)
+    dagImportance := parseAnnoFloat(pod.Annotations["carbonkube.io/dag-importance"]) + p.dagBoost(pod)
+    dgPenalty := p.dataGravityPenalty(ctx, pod, zone)
+    perfEff := p.hardwareEfficiency(pod, nodeInfo.Node(), podRequests)
+    tenant := pod.Annotations["carbonkube.io/tenant"]
+    budgetPenalty := p.getBudgetPenalty(ctx, tenant)
+    wc, ws, wd, wg, wh, wb := p.weights(pod)
+    composed := wc*carbonTerm + ws*slaTerm + wd*dagImportance - wg*dgPenalty + wh*perfEff - wb*budgetPenalty
+    final := int64(math.Max(MinScore, math.Min(MaxScore, composed*100.0)))
 	
 	// Update metrics
 	p.metrics.carbonIntensity.WithLabelValues(zone).Set(moer)
@@ -392,12 +405,12 @@ func (p *EmissionPlugin) Score(ctx context.Context, state *framework.CycleState,
 		zap.Float64("emissionRate", emissionRate),
 		zap.Int64("normalizedScore", normalizedScore))
 
-	return normalizedScore, framework.NewStatus(framework.Success, "")
+    return final, framework.NewStatus(framework.Success, "")
 }
 
 // ScoreExtensions returns the score extensions for the plugin
 func (p *EmissionPlugin) ScoreExtensions() framework.ScoreExtensions {
-	return nil // No extensions needed for basic scoring
+    return nil // No extensions needed for basic scoring
 }
 
 // Filter implements the Katalyst FilterPlugin interface
@@ -411,7 +424,172 @@ func (p *EmissionPlugin) Filter(ctx context.Context, state *framework.CycleState
 		zap.String("pod", pod.Name),
 		zap.String("node", nodeInfo.Node().Name))
 	
-	return framework.NewStatus(framework.Success, "")
+    return framework.NewStatus(framework.Success, "")
+}
+
+func parseAnnoFloat(s string) float64 {
+    if s == "" {
+        return 0
+    }
+    f, _ := strconv.ParseFloat(s, 64)
+    return f
+}
+
+func parseAnnoInt(s string) int64 {
+    if s == "" { return 0 }
+    i, _ := strconv.ParseInt(s, 10, 64)
+    return i
+}
+
+func (p *EmissionPlugin) getBudgetPenalty(ctx context.Context, tenant string) float64 {
+    if tenant == "" {
+        return 0
+    }
+    cm, err := p.kubeClient.CoreV1().ConfigMaps(ConfigMapNamespace).Get(ctx, "carbonkube-tenant-state", metav1.GetOptions{})
+    if err != nil || cm == nil {
+        return 0
+    }
+    over := cm.Data[tenant+".overBudget"]
+    if over == "true" {
+        return 1.0
+    }
+    return 0
+}
+
+func (p *EmissionPlugin) getPerfPerWGain(node *v1.Node) float64 {
+    if arch, ok := node.Labels["kubernetes.io/arch"]; ok {
+        if arch == "arm64" {
+            return 0.2
+        }
+    }
+    return 0
+}
+
+func (p *EmissionPlugin) normalizeCI(moer float64) float64 {
+    minCI, maxCI := 100.0, 1000.0
+    m := math.Max(minCI, math.Min(maxCI, moer))
+    return (m - minCI) / (maxCI - minCI)
+}
+
+func (p *EmissionPlugin) nearTermCI(zone string, minutes int) float64 {
+    base := os.Getenv("CARBONKUBE_PROMETHEUS_URL")
+    if base == "" { return DefaultIntensity }
+    u, err := url.Parse(base)
+    if err != nil { return DefaultIntensity }
+    u.Path = "/api/v1/query_range"
+    q := url.Values{}
+    now := time.Now().UTC()
+    end := now.Add(time.Duration(minutes) * time.Minute)
+    q.Set("query", fmt.Sprintf("carbon_intensity_gco2_per_kwh{zone=\"%s\"}", zone))
+    q.Set("start", now.Format(time.RFC3339))
+    q.Set("end", end.Format(time.RFC3339))
+    q.Set("step", "60s")
+    u.RawQuery = q.Encode()
+    resp, err := http.Get(u.String())
+    if err != nil { return DefaultIntensity }
+    defer resp.Body.Close()
+    var body struct{ Data struct{ Result []struct{ Values [][]interface{} `json:"values"` } `json:"result"` } `json:"data"` }
+    if err := json.NewDecoder(resp.Body).Decode(&body); err != nil { return DefaultIntensity }
+    if len(body.Data.Result) == 0 { return DefaultIntensity }
+    sum := 0.0
+    cnt := 0.0
+    for _, v := range body.Data.Result[0].Values {
+        valStr := v[1].(string)
+        f, _ := strconv.ParseFloat(valStr, 64)
+        sum += f
+        cnt++
+    }
+    if cnt == 0 { return DefaultIntensity }
+    return sum / cnt
+}
+
+func (p *EmissionPlugin) slaUrgency(pod *v1.Pod) float64 {
+    d := pod.Annotations["carbonkube.io/deadline"]
+    est := parseAnnoInt(pod.Annotations["carbonkube.io/estimated-runtime-seconds"])
+    if d == "" || est == 0 { return 0 }
+    deadline, err := time.Parse(time.RFC3339, d)
+    if err != nil { return 0 }
+    slack := deadline.Sub(time.Now().UTC().Add(time.Duration(est) * time.Second)).Seconds()
+    if slack <= 0 { return 1 }
+    maxSlack := 3600.0
+    if slack >= maxSlack { return 0 }
+    return 1.0 - (slack / maxSlack)
+}
+
+func (p *EmissionPlugin) dagBoost(pod *v1.Pod) float64 {
+    if pod.Annotations["carbonkube.io/dag-critical"] == "true" { return 0.2 }
+    return 0
+}
+
+func (p *EmissionPlugin) dataGravityPenalty(ctx context.Context, pod *v1.Pod, zone string) float64 {
+    cfg, err := rest.InClusterConfig()
+    if err != nil { return 0 }
+    dyn, err := dynamic.NewForConfig(cfg)
+    if err != nil { return 0 }
+    gvr := schema.GroupVersionResource{Group: "carbonkube.io", Version: "v1", Resource: "carbonjobs"}
+    list, err := dyn.Resource(gvr).Namespace(pod.Namespace).List(ctx, metav1.ListOptions{})
+    if err != nil { return 0 }
+    dag := pod.Annotations["carbonkube.io/dag-id"]
+    stage := pod.Annotations["carbonkube.io/stage-id"]
+    var spec map[string]interface{}
+    for i := range list.Items {
+        s, _ := list.Items[i].UnstructuredContent()["spec"].(map[string]interface{})
+        if s["dagId"] == dag && s["stageId"] == stage { spec = s; break }
+    }
+    if spec == nil { return 0 }
+    penalty := 0.0
+    if ds, ok := spec["dataSources"].([]interface{}); ok {
+        for _, it := range ds {
+            m := it.(map[string]interface{})
+            r := ""
+            if v, ok := m["region"].(string); ok { r = v }
+            if r == "" || sameRegion(zone, r) { continue }
+            ingress := toFloat(m["avgIngressGBPerJob"]) 
+            read := toFloat(m["avgReadGBPerJob"]) 
+            extra := ingress + read
+            ciDiff := math.Abs(p.nearTermCI(zone, 10) - p.nearTermCI(r, 10))
+            costCoef := envFloat("CARBONKUBE_DG_COST_COEF", 0)
+            carbonCoef := envFloat("CARBONKUBE_DG_CARBON_COEF", 0.001)
+            latencyCoef := envFloat("CARBONKUBE_DG_LATENCY_COEF", 0)
+            lat := 0.0
+            penalty += extra * (costCoef + carbonCoef*ciDiff + latencyCoef*lat)
+        }
+    }
+    return penalty
+}
+
+func sameRegion(zone, r string) bool { return strings.HasPrefix(zone, strings.Split(r, ":")[0]) || strings.Contains(zone, r) }
+
+func envFloat(k string, d float64) float64 { v := os.Getenv(k); if v == "" { return d }; f, _ := strconv.ParseFloat(v, 64); return f }
+
+func toFloat(v interface{}) float64 { switch t := v.(type) { case float64: return t; case int: return float64(t); case int64: return float64(t); default: return 0 } }
+
+func (p *EmissionPlugin) hardwareEfficiency(pod *v1.Pod, node *v1.Node, reqs struct{ CPU, Memory int64 }) float64 {
+    dcgm := NewDCGMClient()
+    ip := p.getNodeIP(node)
+    power := 0.0
+    for i := 0; i < 4; i++ {
+        w, err := dcgm.GetGPUPowerDraw(ip, i)
+        if err == nil { power += w }
+    }
+    cpuKW := p.calculateCPUPower(reqs.CPU)
+    totalKW := cpuKW + power/1000.0
+    if totalKW <= 0 { return 0 }
+    return 1.0 / math.Min(totalKW, 5.0)
+}
+
+func (p *EmissionPlugin) weights(pod *v1.Pod) (float64, float64, float64, float64, float64, float64) {
+    wc := envFloat("CARBONKUBE_WC", 0.35)
+    ws := envFloat("CARBONKUBE_WS", 0.25)
+    wd := envFloat("CARBONKUBE_WD", 0.2)
+    wg := envFloat("CARBONKUBE_WG", 0.1)
+    wh := envFloat("CARBONKUBE_WH", 0.1)
+    wb := envFloat("CARBONKUBE_WB", 0.1)
+    agg := parseAnnoFloat(pod.Annotations["carbonkube.io/carbon-aggressiveness"])
+    crit := pod.Annotations["carbonkube.io/criticality"]
+    if agg > 0 { wc = wc * (1.0 + agg); ws = ws * (1.0 - 0.5*agg) }
+    if crit == "Critical" { ws = 0.5; wc = 0.05; wb = 0 }
+    return wc, ws, wd, wg, wh, wb
 }
 
 // getCarbonIntensityData retrieves carbon intensity data from Redis cache or ConfigMap

@@ -28,94 +28,99 @@ spec:
             spec:
               type: object
               properties:
-                objectives:
+                target:
                   type: object
                   properties:
-                    carbonWeight:
-                      type: number
-                    costWeight:
-                      type: number
-                    slaRiskWeight:
-                      type: number
-                    dataGravityWeight:
-                      type: number
-                  required:
-                    - carbonWeight
-                    - costWeight
-                    - slaRiskWeight
-                    - dataGravityWeight
-                constraints:
-                  type: object
-                  properties:
-                    maxSLAIncreasePercent:
-                      type: integer
-                    maxExtraLatencyMs:
-                      type: integer
-                    maxCarbonPerDay:
-                      type: integer
-                    maxCarbonPerJob:
-                      type: integer
-                  required:
-                    - maxSLAIncreasePercent
-                    - maxExtraLatencyMs
-                shifting:
-                  type: object
-                  properties:
-                    allowTemporalShifting:
-                      type: boolean
-                    maxDelay:
-                      type: string
-                    minGreenWindow:
-                      type: string
-                  required:
-                    - allowTemporalShifting
-                spatial:
-                  type: object
-                  properties:
-                    allowedRegions:
-                      type: array
-                      items:
-                        type: string
-                    avoidRegions:
-                      type: array
-                      items:
-                        type: string
-                    carbonThresholds:
+                    namespaceSelector:
                       type: object
                       properties:
-                        highCarbonLimit:
-                          type: integer
-                        extremeCarbonLimit:
-                          type: integer
-                      required:
-                        - highCarbonLimit
-                        - extremeCarbonLimit
-                  required:
-                    - carbonThresholds
-                adaptive:
+                        matchNames:
+                          type: array
+                          items:
+                            type: string
+                    workloadSelector:
+                      type: object
+                      properties:
+                        matchLabels:
+                          type: object
+                          additionalProperties:
+                            type: string
+                criticality:
+                  type: string
+                  enum:
+                    - Critical
+                    - LatencySensitive
+                    - Batch
+                    - BestEffort
+                sla:
                   type: object
                   properties:
-                    enableAutoTune:
-                      type: boolean
-                    learningRate:
-                      type: number
-                    explorationRate:
-                      type: number
-                    targetCarbonReductionPercent:
+                    maxDelaySeconds:
                       type: integer
-                  required:
-                    - enableAutoTune
+                    maxSlowdownPercent:
+                      type: integer
+                    deadlineMode:
+                      type: string
+                      enum:
+                        - Relative
+                        - Absolute
+                    defaultRelativeDeadlineSeconds:
+                      type: integer
+                carbon:
+                  type: object
+                  properties:
+                    aggressiveness:
+                      type: number
+                      minimum: 0
+                      maximum: 1
+                    maxCarbonIntensity:
+                      type: integer
+                    minRenewableFraction:
+                      type: number
+                      minimum: 0
+                      maximum: 1
+                budget:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    tenantId:
+                      type: string
+                    monthlyCarbonBudgetKg:
+                      type: integer
+                    perJobBudgetKg:
+                      type: integer
+                    burstAllowancePercent:
+                      type: integer
+                    fairness:
+                      type: object
+                      properties:
+                        minShare:
+                          type: number
+                        maxShare:
+                          type: number
+                        overagePolicy:
+                          type: string
+                          enum:
+                            - degrade
+                            - reject
+                            - burst
+                conflictResolution:
+                  type: object
+                  properties:
+                    onBudgetExhaustion:
+                      type: string
+                    onSlaRisk:
+                      type: string
+                    allowOverrideAnnotations:
+                      type: boolean
               required:
-                - objectives
-                - constraints
-                - spatial
+                - target
+                - criticality
+                - sla
             status:
               type: object
               properties:
-                normalizedWeights:
-                  type: object
-                  additionalProperties:
-                    type: number
                 lastUpdated:
                   type: string
                   format: date-time

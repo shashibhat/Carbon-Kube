@@ -1,0 +1,40 @@
+{{- if .Values.controllers.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-kube-controllers
+  labels:
+    app: carbon-kube-controllers
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carbon-kube-controllers
+  template:
+    metadata:
+      labels:
+        app: carbon-kube-controllers
+    spec:
+      serviceAccountName: {{ include "carbon-kube.serviceAccountName" . }}
+      containers:
+        - name: controllers
+          image: {{ include "carbon-kube.image" . }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CARBONKUBE_FORECAST_PROVIDER
+              value: "prometheus"
+            - name: CARBONKUBE_PROMETHEUS_URL
+              value: "http://prometheus-kube-prometheus-prometheus.default.svc:9090"
+            - name: CARBONKUBE_ELECTRICITYMAPS_URL
+              value: "https://api.electricitymap.org"
+            - name: CARBONKUBE_ELECTRICITYMAPS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "carbon-kube.secretName" . }}
+                  key: electricity-maps-api-key
+          command: ["/app/bin/controllers"]
+{{- end }}

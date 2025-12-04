@@ -1,0 +1,29 @@
+{{- if .Values.keplerAttr.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-kube-kepler-attr
+  labels:
+    app: carbon-kube-kepler-attr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carbon-kube-kepler-attr
+  template:
+    metadata:
+      labels:
+        app: carbon-kube-kepler-attr
+    spec:
+      serviceAccountName: {{ include "carbon-kube.serviceAccountName" . }}
+      containers:
+        - name: kepler-attr
+          image: {{ include "carbon-kube.image" . }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          command: ["/app/bin/kepler-attr"]
+          env:
+            - name: CARBONKUBE_PROMETHEUS_URL
+              value: "http://prometheus-kube-prometheus-prometheus.default.svc:9090"
+{{- end }}

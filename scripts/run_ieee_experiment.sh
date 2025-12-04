@@ -28,10 +28,48 @@ wait_for_spark_app() {
     sleep 10
   done
 }
-kubectl -n "${PROMETHEUS_NS}" port-forward "svc/${PROMETHEUS_SVC}" "${PROM_PORT}:9090" >/tmp/pf-prom.log 2>&1 &
-PF_PID=$!
-sleep 5
 PROM_URL="http://localhost:${PROM_PORT}"
+
+ensure_prom_stack() {
+  if ! kubectl -n "${PROMETHEUS_NS}" get svc "${PROMETHEUS_SVC}" >/dev/null 2>&1; then
+    helm upgrade monitoring prometheus-community/kube-prometheus-stack --install --namespace "${PROMETHEUS_NS}" --create-namespace --wait --timeout 10m >/dev/null 2>&1 || true
+  fi
+  local eps
+  eps=$(kubectl -n "${PROMETHEUS_NS}" get endpoints "${PROMETHEUS_SVC}" -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+  if [[ -z "$eps" ]]; then
+    helm upgrade monitoring prometheus-community/kube-prometheus-stack --install --namespace "${PROMETHEUS_NS}" --create-namespace --wait --timeout 10m >/dev/null 2>&1 || true
+  fi
+}
+
+start_port_forward() {
+  kubectl -n "${PROMETHEUS_NS}" port-forward "svc/${PROMETHEUS_SVC}" "${PROM_PORT}:9090" >/tmp/pf-prom.log 2>&1 &
+  PF_PID=$!
+  sleep 5
+}
+
+ensure_prom_stack
+start_port_forward
+
+prom_probe() {
+  curl -sf "${PROM_URL}/-/ready" >/dev/null 2>&1
+}
+
+ensure_prom() {
+  local i
+  for i in {1..12}; do
+    if prom_probe; then
+      return 0
+    fi
+    sleep 5
+  done
+  return 1
+}
+
+prom_query() {
+  local q="$1"
+  local out="$2"
+  curl -s "${PROM_URL}/api/v1/query?query=${q}" > "${out}" || echo '{"status":"error"}' > "${out}"
+}
 
 # Ensure chart dependencies are fetched
 echo "[setup] Fetching chart dependencies"
@@ -40,8 +78,10 @@ helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || t
 helm repo update >/dev/null 2>&1 || true
 helm dependency build "${VALUES_PATH}" >/dev/null 2>&1 || true
 echo "[baseline] Installing chart with carbon-aware disabled"
-helm upgrade "${HELM_RELEASE}" "${VALUES_PATH}" --install --atomic --force --namespace "${NAMESPACE}" \
+helm upgrade "${HELM_RELEASE}" "${VALUES_PATH}" --install --wait --rollback-on-failure --timeout 10m --namespace "${NAMESPACE}" \
   --set mutator.enabled=false --set taintController.enabled=false --set poller.enabled=true \
+  --set katalyst.enabled=false \
+  --set secret.create=false \
   --set poller.electricityMaps.secretName=${ELECTRICITYMAPS_SECRET} \
   --set poller.electricityMaps.secretKey=${ELECTRICITYMAPS_KEY} \
   --set poller.electricityMaps.baseUrl=${ELECTRICITYMAPS_BASEURL} \
@@ -60,15 +100,26 @@ kubectl delete sparkapplication "${SPARK_APP_NAME}" --ignore-not-found=true
 kubectl apply -f https://raw.githubusercontent.com/kubeflow/spark-operator/master/examples/spark-pi.yaml
 wait_for_spark_app
 echo "[baseline] Collecting metrics"
-curl -s "${PROM_URL}/api/v1/query?query=co2_saved_kg_total" > "${RESULTS_DIR}/${EXPERIMENT_ID}_baseline_co2.json"
-curl -s "${PROM_URL}/api/v1/query?query=migrations_total" > "${RESULTS_DIR}/${EXPERIMENT_ID}_baseline_migrations.json"
-curl -s "${PROM_URL}/api/v1/query?query=latency_increase_percent" > "${RESULTS_DIR}/${EXPERIMENT_ID}_baseline_latency.json"
+ensure_prom || true
+prom_query "co2_saved_kg_total" "${RESULTS_DIR}/${EXPERIMENT_ID}_baseline_co2.json"
+prom_query "migrations_total" "${RESULTS_DIR}/${EXPERIMENT_ID}_baseline_migrations.json"
+prom_query "latency_increase_percent" "${RESULTS_DIR}/${EXPERIMENT_ID}_baseline_latency.json"
 kubectl get carbonscores -o yaml > "${RESULTS_DIR}/${EXPERIMENT_ID}_baseline_carbonscores.yaml" || true
 kubectl get pods -o wide > "${RESULTS_DIR}/${EXPERIMENT_ID}_baseline_pods.txt"
 kubectl get nodes -o wide > "${RESULTS_DIR}/${EXPERIMENT_ID}_baseline_nodes.txt"
 echo "[carbon] Enabling mutator and taintController"
-helm upgrade "${HELM_RELEASE}" "${VALUES_PATH}" --install --atomic --force --namespace "${NAMESPACE}" \
+KCFG_PATH="${KUBECONFIG:-$HOME/.kube/config}"
+if [[ -f "$KCFG_PATH" ]]; then
+  kubectl -n "${NAMESPACE}" create secret generic "${HELM_RELEASE}-scheduler-kubeconfig" \
+    --from-file=kubeconfig="$KCFG_PATH" \
+    --dry-run=client -o yaml | kubectl apply -f -
+fi
+
+helm upgrade "${HELM_RELEASE}" "${VALUES_PATH}" --install --wait --rollback-on-failure --namespace "${NAMESPACE}" \
+  --timeout 10m \
   --set mutator.enabled=true --set taintController.enabled=true --set poller.enabled=true \
+  --set katalyst.enabled=false \
+  --set secret.create=false \
   --set poller.electricityMaps.secretName=${ELECTRICITYMAPS_SECRET} \
   --set poller.electricityMaps.secretKey=${ELECTRICITYMAPS_KEY} \
   --set poller.electricityMaps.baseUrl=${ELECTRICITYMAPS_BASEURL} \
@@ -89,14 +140,15 @@ kubectl delete sparkapplication "${SPARK_APP_NAME}" --ignore-not-found=true
 kubectl apply -f https://raw.githubusercontent.com/kubeflow/spark-operator/master/examples/spark-pi.yaml
 wait_for_spark_app
 echo "[carbon] Collecting metrics"
-curl -s "${PROM_URL}/api/v1/query?query=co2_saved_kg_total" > "${RESULTS_DIR}/${EXPERIMENT_ID}_carbon_co2.json"
-curl -s "${PROM_URL}/api/v1/query?query=migrations_total" > "${RESULTS_DIR}/${EXPERIMENT_ID}_carbon_migrations.json"
-curl -s "${PROM_URL}/api/v1/query?query=latency_increase_percent" > "${RESULTS_DIR}/${EXPERIMENT_ID}_carbon_latency.json"
+ensure_prom || true
+prom_query "co2_saved_kg_total" "${RESULTS_DIR}/${EXPERIMENT_ID}_carbon_co2.json"
+prom_query "migrations_total" "${RESULTS_DIR}/${EXPERIMENT_ID}_carbon_migrations.json"
+prom_query "latency_increase_percent" "${RESULTS_DIR}/${EXPERIMENT_ID}_carbon_latency.json"
 kubectl get carbonscores -o yaml > "${RESULTS_DIR}/${EXPERIMENT_ID}_carbon_carbonscores.yaml" || true
 kubectl get pods -o wide > "${RESULTS_DIR}/${EXPERIMENT_ID}_carbon_pods.txt"
 kubectl get nodes -o wide > "${RESULTS_DIR}/${EXPERIMENT_ID}_carbon_nodes.txt"
 echo "[analysis] Generating comparison and figures"
-python3 scripts/analyze_results.py || true
+python3 analyze_results.py || true
 python3 scripts/export_compare.py --results "${RESULTS_DIR}" || true
 EVD_DIR="${RESULTS_DIR}/ieee"
 mkdir -p "${EVD_DIR}/baseline" "${EVD_DIR}/carbon" "${EVD_DIR}/tables" "${EVD_DIR}/figures" "${EVD_DIR}/artifacts"

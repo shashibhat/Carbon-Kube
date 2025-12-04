@@ -3,7 +3,6 @@ package controllers
 import (
     "context"
     "fmt"
-    apiv1 "github.com/shashibhat/Carbon-Kube/api/v1"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     unstructured "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -33,18 +32,7 @@ func NewCarbonPolicyController(cfg *rest.Config) (*CarbonPolicyController, error
     return &CarbonPolicyController{Dyn: dyn, Client: client}, nil
 }
 
-func normalizeWeights(obj apiv1.CarbonPolicyObjectives) map[string]float64 {
-    sum := obj.CarbonWeight + obj.CostWeight + obj.SLARiskWeight + obj.DataGravityWeight
-    out := map[string]float64{}
-    if sum == 0 {
-        return out
-    }
-    out["carbon"] = obj.CarbonWeight / sum
-    out["cost"] = obj.CostWeight / sum
-    out["sla"] = obj.SLARiskWeight / sum
-    out["dataGravity"] = obj.DataGravityWeight / sum
-    return out
-}
+// publish selected policy knobs for easy consumption
 
 func (c *CarbonPolicyController) Start(ctx context.Context, namespace string) error {
     w, err := c.Dyn.Resource(carbonPolicyGVR).Namespace(namespace).Watch(ctx, metav1.ListOptions{})
@@ -66,17 +54,17 @@ func (c *CarbonPolicyController) Start(ctx context.Context, namespace string) er
                 if !ok {
                     continue
                 }
-                objectives := spec["objectives"].(map[string]interface{})
-                ow := apiv1.CarbonPolicyObjectives{
-                    CarbonWeight: toFloat(objectives["carbonWeight"]),
-                    CostWeight: toFloat(objectives["costWeight"]),
-                    SLARiskWeight: toFloat(objectives["slaRiskWeight"]),
-                    DataGravityWeight: toFloat(objectives["dataGravityWeight"]),
+                carbon := map[string]interface{}{}
+                if v, ok := spec["carbon"].(map[string]interface{}); ok {
+                    carbon = v
                 }
-                nw := normalizeWeights(ow)
-                cm := map[string]string{}
-                for k, v := range nw {
-                    cm[k] = formatFloat(v)
+                sla := map[string]interface{}{}
+                if v, ok := spec["sla"].(map[string]interface{}); ok {
+                    sla = v
+                }
+                cm := map[string]string{
+                    "aggressiveness": formatFloat(toFloat(carbon["aggressiveness"])),
+                    "maxDelaySeconds": formatFloat(toFloat(sla["maxDelaySeconds"])),
                 }
                 meta := u.UnstructuredContent()["metadata"].(map[string]interface{})
                 name := meta["name"].(string)

@@ -45,6 +45,9 @@ func HandleMutate(w http.ResponseWriter, r *http.Request) {
     labels := ar.Request.Object.Metadata.Labels
     preferredRegion := ann["carbonkube.io/placement-hint"]
     carbonScore := ann["carbonkube.io/carbonPriorityScore"]
+    policyName := ann["carbonkube.io/policy-name"]
+    tenant := ann["carbonkube.io/tenant"]
+    aggressiveness := ann["carbonkube.io/carbon-aggressiveness"]
     patch := []map[string]interface{}{}
     if preferredRegion != "" {
         if labels == nil {
@@ -60,6 +63,27 @@ func HandleMutate(w http.ResponseWriter, r *http.Request) {
             patch = append(patch, jsonPatchAdd("/metadata/annotations/carbonPriorityScore", carbonScore))
         }
     }
+    if policyName != "" {
+        if ann == nil {
+            patch = append(patch, jsonPatchAdd("/metadata/annotations", map[string]string{"carbonkube.io/policy-name": policyName}))
+        } else {
+            patch = append(patch, jsonPatchAdd("/metadata/annotations/carbonkube.io~1policy-name", policyName))
+        }
+    }
+    if tenant != "" {
+        if ann == nil {
+            patch = append(patch, jsonPatchAdd("/metadata/annotations", map[string]string{"carbonkube.io/tenant": tenant}))
+        } else {
+            patch = append(patch, jsonPatchAdd("/metadata/annotations/carbonkube.io~1tenant", tenant))
+        }
+    }
+    if aggressiveness != "" {
+        if ann == nil {
+            patch = append(patch, jsonPatchAdd("/metadata/annotations", map[string]string{"carbonkube.io/carbon-aggressiveness": aggressiveness}))
+        } else {
+            patch = append(patch, jsonPatchAdd("/metadata/annotations/carbonkube.io~1carbon-aggressiveness", aggressiveness))
+        }
+    }
     resp := admissionResponse{ApiVersion: "admission.k8s.io/v1", Kind: "AdmissionReview"}
     resp.Response.UID = uid
     resp.Response.Allowed = true
@@ -72,4 +96,3 @@ func HandleMutate(w http.ResponseWriter, r *http.Request) {
     enc := json.NewEncoder(w)
     _ = enc.Encode(resp)
 }
-
