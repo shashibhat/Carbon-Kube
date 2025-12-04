@@ -27,6 +27,9 @@ rules:
 - apiGroups: ["katalyst.kubewharf.io"]
   resources: ["*"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["carbonkube.io"]
+  resources: ["carbonjobs", "carbonpolicies"]
+  verbs: ["get", "list", "watch", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -121,6 +124,37 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: {{ include "carbon-kube.rlTunerServiceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if .Values.mutator.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: carbon-kube
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch", "patch"]
+- apiGroups: ["emission.carbon-kube.io"]
+  resources: ["carbonscores"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: carbon-kube
+  labels:
+    {{- include "carbon-kube.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: carbon-kube
+subjects:
+- kind: ServiceAccount
+  name: carbon-kube-mutator
   namespace: {{ .Release.Namespace }}
 {{- end }}
 {{- end }}

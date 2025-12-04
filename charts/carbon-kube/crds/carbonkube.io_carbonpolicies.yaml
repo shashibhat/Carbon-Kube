@@ -1,0 +1,128 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: carbonpolicies.carbonkube.io
+spec:
+  group: carbonkube.io
+  scope: Namespaced
+  names:
+    plural: carbonpolicies
+    singular: carbonpolicy
+    kind: CarbonPolicy
+    shortNames:
+      - cpolicy
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              properties:
+                target:
+                  type: object
+                  properties:
+                    namespaceSelector:
+                      type: object
+                      properties:
+                        matchNames:
+                          type: array
+                          items:
+                            type: string
+                    workloadSelector:
+                      type: object
+                      properties:
+                        matchLabels:
+                          type: object
+                          additionalProperties:
+                            type: string
+                criticality:
+                  type: string
+                  enum:
+                    - Critical
+                    - LatencySensitive
+                    - Batch
+                    - BestEffort
+                sla:
+                  type: object
+                  properties:
+                    maxDelaySeconds:
+                      type: integer
+                    maxSlowdownPercent:
+                      type: integer
+                    deadlineMode:
+                      type: string
+                      enum:
+                        - Relative
+                        - Absolute
+                    defaultRelativeDeadlineSeconds:
+                      type: integer
+                carbon:
+                  type: object
+                  properties:
+                    aggressiveness:
+                      type: number
+                      minimum: 0
+                      maximum: 1
+                    maxCarbonIntensity:
+                      type: integer
+                    minRenewableFraction:
+                      type: number
+                      minimum: 0
+                      maximum: 1
+                budget:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    tenantId:
+                      type: string
+                    monthlyCarbonBudgetKg:
+                      type: integer
+                    perJobBudgetKg:
+                      type: integer
+                    burstAllowancePercent:
+                      type: integer
+                    fairness:
+                      type: object
+                      properties:
+                        minShare:
+                          type: number
+                        maxShare:
+                          type: number
+                        overagePolicy:
+                          type: string
+                          enum:
+                            - degrade
+                            - reject
+                            - burst
+                conflictResolution:
+                  type: object
+                  properties:
+                    onBudgetExhaustion:
+                      type: string
+                    onSlaRisk:
+                      type: string
+                    allowOverrideAnnotations:
+                      type: boolean
+              required:
+                - target
+                - criticality
+                - sla
+            status:
+              type: object
+              properties:
+                lastUpdated:
+                  type: string
+                  format: date-time
+      subresources:
+        status: {}

@@ -15,17 +15,16 @@ RUN go mod tidy
 RUN CGO_ENABLED=0 go build -o /out/mutator ./cmd/mutator
 RUN CGO_ENABLED=0 go build -o /out/taintcontroller ./cmd/taintcontroller
 RUN CGO_ENABLED=0 go build -o /out/metrics ./cmd/metrics
+RUN CGO_ENABLED=0 go build -o /out/controllers ./cmd/controllers
+RUN CGO_ENABLED=0 go build -o /out/kepler-attr ./cmd/kepler-attr
 
 FROM --platform=$TARGETPLATFORM debian:bookworm-slim
 
 # Install Python + pip + dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3 python3-requests python3-pip python3-kubernetes ca-certificates && \
+        python3 python3-pip python3-requests python3-kubernetes ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
-
-# Install Python libraries
-
 
 WORKDIR /app
 
@@ -33,6 +32,13 @@ COPY cmd/poll ./cmd/poll
 COPY poller ./poller
 COPY --from=builder /out /app/bin
 COPY entrypoint.sh /usr/local/bin/carbon-kube
+
+# Pull kube-scheduler binary matching cluster version
+ARG K8S_VERSION=v1.28.4
+RUN curl -fsSL "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kube-scheduler" -o /usr/local/bin/kube-scheduler && \
+    chmod +x /usr/local/bin/kube-scheduler
+
+# Python dependencies installed via apt (PEP 668 compliant)
 
 RUN chmod +x /usr/local/bin/carbon-kube
 

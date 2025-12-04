@@ -1,3 +1,4 @@
+{{- if .Values.webhook.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,8 +18,9 @@ spec:
       serviceAccountName: carbon-kube
       containers:
         - name: webhook
-          image: {{ .Values.images.webhook }}
+          image: {{ include "carbon-kube.image" . }}
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
               containerPort: 8443
+{{- end }}

@@ -5,54 +5,63 @@ import (
     "k8s.io/apimachinery/pkg/runtime"
 )
 
-type CarbonPolicyObjectives struct {
-    CarbonWeight float64 `json:"carbonWeight"`
-    CostWeight float64 `json:"costWeight"`
-    SLARiskWeight float64 `json:"slaRiskWeight"`
-    DataGravityWeight float64 `json:"dataGravityWeight"`
+type NamespaceSelector struct {
+    MatchNames []string `json:"matchNames,omitempty"`
 }
 
-type CarbonPolicyConstraints struct {
-    MaxSLAIncreasePercent int `json:"maxSLAIncreasePercent"`
-    MaxExtraLatencyMs int `json:"maxExtraLatencyMs"`
-    MaxCarbonPerDay int `json:"maxCarbonPerDay"`
-    MaxCarbonPerJob int `json:"maxCarbonPerJob"`
+type WorkloadSelector struct {
+    MatchLabels map[string]string `json:"matchLabels,omitempty"`
 }
 
-type CarbonPolicyShifting struct {
-    AllowTemporalShifting bool `json:"allowTemporalShifting"`
-    MaxDelay string `json:"maxDelay"`
-    MinGreenWindow string `json:"minGreenWindow"`
+type PolicyTarget struct {
+    NamespaceSelector NamespaceSelector `json:"namespaceSelector,omitempty"`
+    WorkloadSelector WorkloadSelector `json:"workloadSelector,omitempty"`
 }
 
-type CarbonThresholds struct {
-    HighCarbonLimit int `json:"highCarbonLimit"`
-    ExtremeCarbonLimit int `json:"extremeCarbonLimit"`
+type SLAEnvelope struct {
+    MaxDelaySeconds int `json:"maxDelaySeconds"`
+    MaxSlowdownPercent int `json:"maxSlowdownPercent"`
+    DeadlineMode string `json:"deadlineMode"`
+    DefaultRelativeDeadlineSeconds int `json:"defaultRelativeDeadlineSeconds"`
 }
 
-type CarbonPolicySpatial struct {
-    AllowedRegions []string `json:"allowedRegions"`
-    AvoidRegions []string `json:"avoidRegions"`
-    CarbonThresholds CarbonThresholds `json:"carbonThresholds"`
+type CarbonKnobs struct {
+    Aggressiveness float64 `json:"aggressiveness"`
+    MaxCarbonIntensity int `json:"maxCarbonIntensity,omitempty"`
+    MinRenewableFraction float64 `json:"minRenewableFraction,omitempty"`
 }
 
-type CarbonPolicyAdaptive struct {
-    EnableAutoTune bool `json:"enableAutoTune"`
-    LearningRate float64 `json:"learningRate"`
-    ExplorationRate float64 `json:"explorationRate"`
-    TargetCarbonReductionPercent int `json:"targetCarbonReductionPercent"`
+type Fairness struct {
+    MinShare float64 `json:"minShare,omitempty"`
+    MaxShare float64 `json:"maxShare,omitempty"`
+    OveragePolicy string `json:"overagePolicy,omitempty"`
+}
+
+type Budget struct {
+    Enabled bool `json:"enabled"`
+    TenantId string `json:"tenantId"`
+    MonthlyCarbonBudgetKg int `json:"monthlyCarbonBudgetKg"`
+    PerJobBudgetKg int `json:"perJobBudgetKg"`
+    BurstAllowancePercent int `json:"burstAllowancePercent"`
+    Fairness Fairness `json:"fairness,omitempty"`
+}
+
+type ConflictResolution struct {
+    OnBudgetExhaustion string `json:"onBudgetExhaustion,omitempty"`
+    OnSlaRisk string `json:"onSlaRisk,omitempty"`
+    AllowOverrideAnnotations bool `json:"allowOverrideAnnotations,omitempty"`
 }
 
 type CarbonPolicySpec struct {
-    Objectives CarbonPolicyObjectives `json:"objectives"`
-    Constraints CarbonPolicyConstraints `json:"constraints"`
-    Shifting CarbonPolicyShifting `json:"shifting"`
-    Spatial CarbonPolicySpatial `json:"spatial"`
-    Adaptive CarbonPolicyAdaptive `json:"adaptive"`
+    Target PolicyTarget `json:"target"`
+    Criticality string `json:"criticality"`
+    SLA SLAEnvelope `json:"sla"`
+    Carbon CarbonKnobs `json:"carbon"`
+    Budget Budget `json:"budget,omitempty"`
+    ConflictResolution ConflictResolution `json:"conflictResolution,omitempty"`
 }
 
 type CarbonPolicyStatus struct {
-    NormalizedWeights map[string]float64 `json:"normalizedWeights,omitempty"`
     LastUpdated metav1.Time `json:"lastUpdated,omitempty"`
 }
 
@@ -75,16 +84,13 @@ func (in *CarbonPolicy) DeepCopyObject() runtime.Object {
     }
     out := new(CarbonPolicy)
     *out = *in
-    if in.Spec.Spatial.AllowedRegions != nil {
-        out.Spec.Spatial.AllowedRegions = append([]string{}, in.Spec.Spatial.AllowedRegions...)
+    if in.Spec.Target.NamespaceSelector.MatchNames != nil {
+        out.Spec.Target.NamespaceSelector.MatchNames = append([]string{}, in.Spec.Target.NamespaceSelector.MatchNames...)
     }
-    if in.Spec.Spatial.AvoidRegions != nil {
-        out.Spec.Spatial.AvoidRegions = append([]string{}, in.Spec.Spatial.AvoidRegions...)
-    }
-    if in.Status.NormalizedWeights != nil {
-        out.Status.NormalizedWeights = map[string]float64{}
-        for k, v := range in.Status.NormalizedWeights {
-            out.Status.NormalizedWeights[k] = v
+    if in.Spec.Target.WorkloadSelector.MatchLabels != nil {
+        out.Spec.Target.WorkloadSelector.MatchLabels = map[string]string{}
+        for k, v := range in.Spec.Target.WorkloadSelector.MatchLabels {
+            out.Spec.Target.WorkloadSelector.MatchLabels[k] = v
         }
     }
     return out
@@ -104,4 +110,3 @@ func (in *CarbonPolicyList) DeepCopyObject() runtime.Object {
     }
     return out
 }
-

@@ -57,9 +57,9 @@
    Then visit http://localhost:3000 (admin/admin)
 {{- end }}
 
-{{- if not .Values.secret.data.electricity-maps-api-key }}
+{{- if not (index .Values.secret.data "electricity-maps-api-key") }}
 ⚠️  WARNING: Electricity Maps API key is not configured. Please update the secret:
-   kubectl patch secret {{ .Values.secret.name }} -n {{ .Release.Namespace }} -p '{"data":{"electricity-maps-api-key":"<base64-encoded-key>"}}'
+   kubectl patch secret {{ include "carbon-kube.secretName" . }} -n {{ .Release.Namespace }} -p '{"data":{"electricity-maps-api-key":"<base64-encoded-key>"}}'
 {{- end }}
 
 For more information, visit: https://github.com/carbon-kube/carbon-kube

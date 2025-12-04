@@ -1,3 +1,0 @@
-{{- if .Values.crds.enabled }}
-{{ .Files.Get "../../config/crd/bases/carbonkube.io_carbonpolicies.yaml" }}
-{{- end }}
