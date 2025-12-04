@@ -10,11 +10,10 @@
 
 ## Overview
 
-# Carbon-Kube: Carbon-Aware Scheduling for Data Pipelines on Kubernetes
-
-> **Carbon-Kube** is a Kubernetes-native scheduler extension for **data pipelines** (Spark, Flink, ETL) that optimizes **when** and **where** jobs run to minimize CO₂ emissions—**without** breaking SLAs.
-
-It treats workloads not as isolated pods, but as **DAG stages with external data dependencies** (Kafka, DB, S3) and applies **policy-as-code** to balance:
+> Carbon-Kube is a Kubernetes-native scheduler extension for data pipelines (Spark, Flink, ETL) that optimizes when and where jobs run to minimize CO₂ emissions — without breaking SLAs.
+Carbon-Kube is the first Kubernetes-native system to jointly model SLA envelopes, 
+DAG-criticality, data gravity, forecast-based carbon windows, tenant budgets, 
+and hardware efficiency in a unified scheduler.It treats workloads as **DAG stages with external data dependencies** (Kafka, DB, S3) and applies **policy-as-code** to balance:
 
 - Deadlines and slowdown limits (SLA),
 - Per-tenant **carbon budgets**,
@@ -22,7 +21,7 @@ It treats workloads not as isolated pods, but as **DAG stages with external data
 - Data gravity and cross-region costs,
 - Hardware efficiency (ARM vs x86, GPU types).
 
-The result is a **practical** system you can run on a real cluster *and* a solid foundation for an A/A+ research paper.
+The result is a **practical** system you can run on a real cluster and a solid foundation for publishable research.
 
 ---
 
@@ -46,20 +45,49 @@ Carbon-Kube exists to fix those blind spots in a Kubernetes-native way.
 
 ---
 
-## Features
+## Capabilities
 - **CRDs**
   - CarbonPolicy: target selectors, criticality, SLA envelope, carbon knobs, tenant budgets and fairness, conflict resolution.
   - CarbonJobSpec: DAG identity, upstreams, time hints, external data sources/regions and sizes, optional `policyRef`.
 - **Controllers**
   - PolicyResolver: resolves `CarbonPolicy` via selectors, annotates jobs with policy context.
   - DAGController: computes topological depth, critical path, and `normalizedImportance`; annotates jobs.
-  - TemporalPlanner: uses real carbon forecasts (Prometheus/Electricity Maps) to choose `scheduled-at` within SLA.
+  - TemporalPlanner: uses real carbon forecasts  to choose `scheduled-at` within SLA.
   - BudgetEnforcer: aggregates measured energy→CO₂ per tenant from Kepler via Prometheus; updates tenant state.
 - **Scheduler Plugin**: combines emissions with DAG importance, budget penalties, data movement cost, and perf-per-watt; Critical workloads bypass carbon shifting.
 - **Webhook**: injects placement and policy context annotations and labels used by the plugin.
 - **Monitoring & Viz**: ServiceMonitors and rules; Grafana dashboards.
 
-### Temporal Planner Formulas
+### SLA Enforcement via Policy-Driven Annotations
+Carbon-Kube now extracts all SLA parameters from CarbonPolicy—not from the CarbonJobSpec. 
+The PolicyResolver writes the following annotations onto each workload:
+- `carbonkube.io/maxDelaySeconds`
+- `carbonkube.io/maxSlowdownPercent`
+- `carbonkube.io/deadlineMode`
+- `carbonkube.io/defaultRelativeDeadlineSeconds`
+- `carbonkube.io/criticality`
+- `carbonkube.io/carbon-aggressiveness`
+- `carbonkube.io/tenant`
+
+The Temporal Planner consumes these annotations to compute feasible start-time windows.
+
+### Temporal Planner
+### SLA Source and Criticality
+The Temporal Planner no longer reads SLA fields from the CarbonJobSpec. 
+Instead, it strictly uses policy-derived annotations written by the PolicyResolver.
+
+Special case:
+- If `carbonkube.io/criticality=Critical`, the job is never deferred, and `scheduled-at = now`.
+
+### Deadline Semantics
+If `.spec.deadline` is omitted in the CarbonJob:
+- If `deadlineMode=Relative`, the planner computes:
+  `deadline = now + defaultRelativeDeadlineSeconds`
+- If `deadlineMode=Absolute`, a 24-hour fallback window is applied.
+
+### Slowdown Interpretation
+`maxSlowdownPercent` is treated as a true percentage of baseline runtime, not a duration.
+
 - Feasible window:
   - `t_min = t0`
   - `t_max = min(t0 + Δ_max, D − T, t_asap + s_max·T/100)`
@@ -74,12 +102,47 @@ Carbon-Kube exists to fix those blind spots in a Kubernetes-native way.
   - `score = w1·(1 − C_norm) + w2·R + w3·I − w4·B − w5·M + w6·P`
   - `C_norm` normalized carbon intensity, `R` renewable fraction, `I` DAG importance, `B` budget penalty, `M` data movement cost, `P` perf-per-watt gain.
   - Critical workloads: `score = 100`.
+### Region Selector (Data-Gravity Aware)
+Carbon-Kube computes region scores using:
+- Carbon intensity and renewable fraction
+- Data-gravity penalties based on:
+  - Kafka/S3/DB locality
+  - Cross-region egress cost
+  - Latency impact
+- Mobility level annotations from CarbonJob
+
+This produces a `preferredRegion` annotation consumed by the mutating webhook and scheduler plugin.
+
+### GPU/HW Placement
+### GPU and Hardware-Aware Placement
+Nodes are scored using:
+- `carbonkube.io/gpu-perf-watt` (normalized)
+- `nvidia.com/gpu-product`
+- Region-level carbon intensity
+
+Final GPU score:
+`score = 0.6*(1 - carbon_norm) + 0.4*(perf_per_watt_norm)`
 
 
-## Architecture Overview
+### Budget Enforcer
+### Tenant State & Overage Policies
+The BudgetEnforcer persists tenant-level carbon accounting into the 
+`carbonkube-tenant-state` ConfigMap, including:
+- `usedCarbonMonthlyKg`
+- `remainingBudgetKg`
+- `overBudget`
+- `budgetPenalty`
+- `mobilityReduction`
+- `rejectNonCritical`
+- `bursting`
+
+These values influence the scheduler plugin. Overage policies (`reject`, `degrade`, `burst`)
+are fully enforced based on CarbonPolicy definitions.
+
+## Architecture
 
 High-level flow:
-1. **Forecast**: Prometheus(Kpler data) /Electricity Maps expose `carbon_intensity_gco2_per_kwh{zone=...}` time series.
+1. **Forecast**: Prometheus/Electricity Maps expose `carbon_intensity_gco2_per_kwh{zone=...}` time series; Kepler provides pod energy.
 2. **Policy Resolution**: `CarbonPolicy` → annotations (`policy-name`, `criticality`, `tenant`, `carbon-aggressiveness`).
 3. **DAG Analysis**: `CarbonJobSpec` → DAG metrics (`dag-importance`, `dag-critical`).
 4. **Temporal Planning**: SLA + forecast → planned `scheduled-at`.
@@ -87,40 +150,70 @@ High-level flow:
 6. **Scheduling**: Plugin scores using emissions, DAG importance, budgets, and data gravity; webhook injects hints.
 
 ```mermaid
-graph TD
-    F[Forecast Provider\n(Prometheus/ElectricityMaps)] --> TP[Temporal Planner]
+flowchart TD
+    FP[Forecast Provider<br/>Prometheus / ElectricityMaps] --> TP[Temporal Planner]
     CP[CarbonPolicy] --> PR[Policy Resolver]
     CJ[CarbonJobSpec] --> DG[DAG Controller]
-    PR --> A1[Job Annotations]
-    DG --> A2[Job Annotations]
-    TP --> A3[Job Annotations]
-    A1 --> WH[Mutating Webhook]
+    PR --> A1[Policy Annotations]
+    DG --> A2[DAG Annotations]
+    TP --> A3[Temporal Annotations]
+    A1 --> WH[Scheduler Webhook]
     A2 --> WH
     A3 --> WH
-    WH --> S[Kube Scheduler + Plugin]
-    S --> P[Placement]
-    K[Kepler Metrics] --> BE[Budget Enforcer]
-    BE --> CM[ConfigMap\nTenant State]
-    CM --> S
+    WH --> SP[Scheduler Plugin]
+    SP --> NP[Node Placement]
+    KPLR[Kepler Energy Metrics] --> BE[Budget Enforcer]
+    BE --> CM[carbonkube-tenant-state]
+    CM --> SP
+
 ```
 
 
-Detailed components:
+### Components
 - **Scheduler Plugin**: Go plugin (see `/pkg/emissionplugin`).
 - **Controllers**: `/controllers/*` implement policy resolution, DAG analysis, temporal planning, and budget enforcement.
 - **Forecast Providers**: `/pkg/providers` for Prometheus and Electricity Maps.
 - **Kepler Attribution**:  binary exposing derived metrics via Prometheus queries.
 
-## Configuration and Deployment
-## Prerequisites
+## Usage
+
+### Prerequisites
 - AWS CLI v2+ with admin IAM role.
 - Node.js 18+ and Python 3.10+ (for CDK).
 - `eksctl` and `kubectl`.
 - Prometheus Operator and Kepler deployed in-cluster.
 - Electricity Maps API key (optional).
 
-## Deployment Steps
-[Deployment Guide](docs/DEPLOYMENT.md)
+### Deploy
+
+- Install Prometheus Operator and Kepler in-cluster.
+- Set environment for providers (via Helm values or env):
+  - `CARBONKUBE_PROMETHEUS_URL`, optional Electricity Maps `CARBONKUBE_ELECTRICITYMAPS_URL` and `CARBONKUBE_ELECTRICITYMAPS_TOKEN`.
+- Install Carbon-Kube chart:
+
+```bash
+helm upgrade --install carbon-kube ./charts/carbon-kube --namespace default
+```
+
+More details in the [Deployment Guide](docs/DEPLOYMENT.md).
+
+### Configuration
+
+- Forecast provider:
+  - `CARBONKUBE_FORECAST_PROVIDER`: `prometheus` or `electricitymaps`
+  - `CARBONKUBE_PROMETHEUS_URL`: Prometheus base URL
+  - `CARBONKUBE_ELECTRICITYMAPS_URL`, `CARBONKUBE_ELECTRICITYMAPS_TOKEN`
+- Budget enforcement and fairness are defined in `CarbonPolicy` and surfaced via `carbonpolicy-index-<namespace>`.
+- Temporal planner reads SLA from policy-derived annotations (no SLA in JobSpec).
+
+### Evaluation
+
+- Reproduce figures using the evaluation harness:
+
+```bash
+./evaluation/run_all.sh baseline
+./evaluation/run_all.sh carbonkube_full
+```
 
 # EXPERIMENT METHODOLOGY 
 
@@ -148,7 +241,7 @@ This section describes the experimental setup used to evaluate Carbon-Kube under
 
 ---
 
-##  Workload
+## Workload
 
 We evaluate the system using **Spark-Pi**, deployed through the Kubeflow Spark Operator.  
 Each experiment executes a **2-hour Spark workload**, measuring:
@@ -222,7 +315,7 @@ kepler_container_joules_total{pod_name="<pod>",namespace="<ns>"}
 carbon_intensity_gco2_per_kwh{zone="<region>"}
 ```
 
-Pods are mapped to tenants via `carbonkube.io/tenant` and to regions via `preferredRegion`. The Budget Enforcer periodically writes per-tenant state into the `carbonkube-tenant-state` ConfigMap (`usedCarbonMonthlyKg`, `remainingBudgetKg`, `overBudget`).
+Pods are mapped to tenants via `carbonkube.io/tenant` and to regions via `preferredRegion`. The Budget Enforcer periodically writes per-tenant state into the `carbonkube-tenant-state` ConfigMap (`usedCarbonMonthlyKg`, `remainingBudgetKg`, `overBudget`, `budgetPenalty`).
 
 ### Spark Workload
 
@@ -241,7 +334,7 @@ The SparkApplication requests:
 
 For the purposes of the paper, we repeat the job multiple times over a **2‑hour** interval for each regime (baseline and carbon‑aware).
 
-##  Metrics and Instrumentation
+## Metrics and Instrumentation
 
 ### Prometheus Metrics
 
@@ -251,13 +344,13 @@ Carbon‑Kube exposes scheduler and attribution metrics via ServiceMonitors. Key
 - `migrations_total` – total number of carbon-driven scheduling decisions.
 - `latency_increase_percent` – percent increase in workload latency vs baseline.
 
-These metrics are scraped by the Prometheus server exposed as:
+Metrics are scraped by Prometheus (Operator) and available via:
 
 ```bash
 kubectl -n default port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090
 ```
 
-and queried via Prometheus HTTP API. Example query:
+Query examples:
 
 ```bash
 curl -s "http://localhost:9090/api/v1/query?query=co2_saved_kg_total"
@@ -332,7 +425,7 @@ Each phase lasts **2 hours** and runs the same Spark workload.
 
 ---
 
-#   Results and Analysis
+# Results and Analysis
 
 In this section we present results run on lab consistent with the behavior observed in our prototype implementation. The precise values can be regenerated by re‑running `run_experiment.sh` and the analysis script in `scripts/analyze_results.py`.
 
