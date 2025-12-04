@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/shashibhat/Carbon-Kube/pkg/scoring"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -65,12 +66,55 @@ func (c *CarbonJobController) Start(ctx context.Context, namespace string) error
 				meta := u.UnstructuredContent()["metadata"].(map[string]interface{})
 				name := meta["name"].(string)
 				ns := meta["namespace"].(string)
-				_ = u.UnstructuredContent()["spec"].(map[string]interface{})
+				spec := u.UnstructuredContent()["spec"].(map[string]interface{})
+				valid := true
+				reqs := []string{"dagId", "stageId", "upstreamStages", "estimatedRuntimeSeconds", "deadline", "dataSources", "policyRef"}
+				for _, k := range reqs {
+					if _, ok := spec[k]; !ok {
+						valid = false
+					}
+				}
+				ann := map[string]string{}
+				if !valid {
+					ann["carbonkube.io/job-valid"] = "false"
+				}
+				if _, ok := u.UnstructuredContent()["metadata"].(map[string]interface{}); ok {
+					md := u.UnstructuredContent()["metadata"].(map[string]interface{})
+					a := map[string]interface{}{}
+					if v, ok := md["annotations"].(map[string]interface{}); ok {
+						a = v
+					}
+					for k, v := range ann {
+						a[k] = v
+					}
+					md["annotations"] = a
+				}
 				hint := ""
 				wts := scoring.PolicyWeights{CarbonWeight: 0.4, CostWeight: 0.2, SLARiskWeight: 0.2, DataGravityWeight: 0.2}
 				cons := scoring.PolicyConstraints{HighCarbonLimit: 400, ExtremeCarbonLimit: 600, MaxSLAIncreasePercent: 10}
 				score := scoring.ComputeScore(scoring.CarbonScores{CarbonScore: 80, CostScore: 60, SLARisk: 20, DataGravityPenalty: 10}, wts, cons, 350, 5)
-				ann := map[string]string{"carbonkube.io/placement-hint": hint, "carbonkube.io/carbonPriorityScore": formatFloat(score)}
+				if _, ok := spec["mobilityLevel"].(string); ok {
+					ml := spec["mobilityLevel"].(string)
+					ms := 0.5
+					if ml == "pinned" {
+						ms = 0
+					} else if ml == "highly-mobile" {
+						ms = 1
+					}
+					ann["carbonkube.io/mobilityScore"] = formatFloat(ms)
+				}
+				if mds, ok := u.UnstructuredContent()["metadata"].(map[string]interface{}); ok {
+					a := map[string]interface{}{}
+					if v, ok := mds["annotations"].(map[string]interface{}); ok {
+						a = v
+					}
+					if _, ok := a["carbonkube.io/scheduled-at"]; !ok {
+						now := time.Now().UTC()
+						ann["carbonkube.io/scheduled-at"] = now.Format(time.RFC3339)
+					}
+				}
+				ann["carbonkube.io/placement-hint"] = hint
+				ann["carbonkube.io/carbonPriorityScore"] = formatFloat(score)
 				if m, ok := u.UnstructuredContent()["metadata"].(map[string]interface{}); ok {
 					if a, ok := m["annotations"].(map[string]interface{}); ok {
 						for k, v := range ann {

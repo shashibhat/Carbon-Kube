@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"math"
 	"sort"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -70,6 +71,7 @@ func (d *DAGController) Start(ctx context.Context, namespace string) error {
 					}
 					edges[sid] = ups
 				}
+				invalid := hasCycle(edges)
 				depth := topoDepth(edges)
 				dist := longestPath(edges)
 				maxDist := 0
@@ -83,6 +85,13 @@ func (d *DAGController) Start(ctx context.Context, namespace string) error {
 					if maxDist > 0 {
 						imp = float64(dist[sid]) / float64(maxDist)
 					}
+					rt := 0.0
+					if v, ok := nodes[sid]["estimatedRuntimeSeconds"].(int64); ok {
+						rt = float64(v)
+					} else if v, ok := nodes[sid]["estimatedRuntimeSeconds"].(float64); ok {
+						rt = v
+					}
+					imp = imp * math.Log(rt+1)
 					status := map[string]interface{}{
 						"dag": map[string]interface{}{
 							"isCriticalPath":       dist[sid] == maxDist,
@@ -104,6 +113,7 @@ func (d *DAGController) Start(ctx context.Context, namespace string) error {
 						"carbonkube.io/stage-id":       sid,
 						"carbonkube.io/dag-importance": formatFloat(imp),
 						"carbonkube.io/dag-critical":   boolString(dist[sid] == maxDist),
+						"carbonkube.io/dag-valid":      boolString(!invalid),
 					}
 					if md, ok := obj.UnstructuredContent()["metadata"].(map[string]interface{}); ok {
 						if a, ok := md["annotations"].(map[string]interface{}); ok {
@@ -198,6 +208,30 @@ func topologicalOrder(edges map[string][]string) []string {
 		}
 	}
 	return order
+}
+
+func hasCycle(edges map[string][]string) bool {
+	visit := map[string]int{}
+	var dfs func(string) bool
+	dfs = func(u string) bool {
+		visit[u] = 1
+		for _, v := range edges[u] {
+			if visit[v] == 1 {
+				return true
+			}
+			if visit[v] == 0 && dfs(v) {
+				return true
+			}
+		}
+		visit[u] = 2
+		return false
+	}
+	for n := range edges {
+		if visit[n] == 0 && dfs(n) {
+			return true
+		}
+	}
+	return false
 }
 
 func boolString(b bool) string {

@@ -10,18 +10,41 @@
 
 ## Overview
 
-**Carbon-Kube** is a lightweight, production-ready Kubernetes scheduler extension designed to minimize the carbon footprint of big data workloads (e.g., Spark and Flink jobs) without compromising latency or SLA compliance. It integrates real carbon intensity forecasts (via Prometheus, with Electricity Maps as an optional plugin) and measured per-pod energy from Kepler/DCGM to plan greener start windows and placement—achieving 5–15% CO₂ reductions on petabyte-scale pipelines while preserving deadlines.
+# Carbon-Kube: Carbon-Aware Scheduling for Data Pipelines on Kubernetes
 
+> **Carbon-Kube** is a Kubernetes-native scheduler extension for **data pipelines** (Spark, Flink, ETL) that optimizes **when** and **where** jobs run to minimize CO₂ emissions—**without** breaking SLAs.
 
+It treats workloads not as isolated pods, but as **DAG stages with external data dependencies** (Kafka, DB, S3) and applies **policy-as-code** to balance:
 
-### Why Carbon-Kube?
-- **Sustainability Meets Scale**: Data centers consume ~2% of global electricity, with big data jobs contributing disproportionately. This tool shifts workloads to "green" windows (e.g., nighttime renewables in Oregon) while preserving 98% uptime.
-- **Zero-Refactor Integration**: No infra overhauls—extends k8s scheduler scoring phase with an `emission_score` metric.
+- Deadlines and slowdown limits (SLA),
+- Per-tenant **carbon budgets**,
+- Carbon intensity forecasts,
+- Data gravity and cross-region costs,
+- Hardware efficiency (ARM vs x86, GPU types).
 
-Key Impacts (from EKS evals):
-- **Emissions Savings**: 5-15% CO₂ cut (e.g., 420kg vs. 500kg baseline per 1PB run).
-- **Performance**: 0% SLA violations; leverages spot instances for cost/emission wins.
-- **Adoption Ease**: Helm chart + CDK stack = deploy in 20 minutes.
+The result is a **practical** system you can run on a real cluster *and* a solid foundation for an A/A+ research paper.
+
+---
+
+## 1. Problem & Motivation
+
+Big-data pipelines (Spark/Flink/ETL) on K8s:
+
+- Run across **regions/zones** with wildly different carbon intensity.
+- Have **soft deadlines** and slack that could be exploited.
+- Are tightly coupled to **external data sources** (Kafka, DBs, object storage) that impose data gravity.
+- Are shared by **multiple tenants** competing for the same capacity and carbon budget.
+
+Most “green K8s” efforts either:
+
+- Focus only on **current** carbon intensity (no forecasting),
+- Ignore **DAG structure** and external dependencies,
+- Treat jobs as isolated pods with no **SLA/error budget** semantics,
+- Use **modeled** energy (CPU×TDP) instead of **measured** pod-level energy.
+
+Carbon-Kube exists to fix those blind spots in a Kubernetes-native way.
+
+---
 
 ## Features
 - **CRDs**
@@ -56,7 +79,7 @@ Key Impacts (from EKS evals):
 ## Architecture Overview
 
 High-level flow:
-1. **Forecast**: Prometheus/Electricity Maps expose `carbon_intensity_gco2_per_kwh{zone=...}` time series.
+1. **Forecast**: Prometheus(Kpler data) /Electricity Maps expose `carbon_intensity_gco2_per_kwh{zone=...}` time series.
 2. **Policy Resolution**: `CarbonPolicy` → annotations (`policy-name`, `criticality`, `tenant`, `carbon-aggressiveness`).
 3. **DAG Analysis**: `CarbonJobSpec` → DAG metrics (`dag-importance`, `dag-critical`).
 4. **Temporal Planning**: SLA + forecast → planned `scheduled-at`.
@@ -86,7 +109,7 @@ Detailed components:
 - **Scheduler Plugin**: Go plugin (see `/pkg/emissionplugin`).
 - **Controllers**: `/controllers/*` implement policy resolution, DAG analysis, temporal planning, and budget enforcement.
 - **Forecast Providers**: `/pkg/providers` for Prometheus and Electricity Maps.
-- **Kepler Attribution**: optional binary exposing derived metrics via Prometheus queries.
+- **Kepler Attribution**:  binary exposing derived metrics via Prometheus queries.
 
 ## Configuration and Deployment
 ## Prerequisites

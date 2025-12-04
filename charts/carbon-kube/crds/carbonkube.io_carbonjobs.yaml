@@ -36,6 +36,12 @@ spec:
                   type: array
                   items:
                     type: string
+                mobilityLevel:
+                  type: string
+                  enum:
+                    - pinned
+                    - constrained
+                    - highly-mobile
                 estimatedRuntimeSeconds:
                   type: integer
                   minimum: 0

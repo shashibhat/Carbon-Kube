@@ -69,10 +69,65 @@ func (b *BudgetEnforcer) Start(ctx context.Context, namespace string) error {
 				data[prefix+".remainingBudgetKg"] = intString(remaining)
 				data[prefix+".overBudget"] = over
 				data[prefix+".throttled"] = throttled
+				if over == "true" {
+					data[prefix+".budgetPenalty"] = "25"
+				}
+				fairness := map[string]interface{}{}
+				if v, ok := budget["fairness"].(map[string]interface{}); ok {
+					fairness = v
+				}
+				overPolicy := safeString(fairness["overagePolicy"])
+				if overPolicy == "reject" {
+					data[prefix+".rejectNonCritical"] = "true"
+				} else if overPolicy == "degrade" {
+					data[prefix+".mobilityReduction"] = "20"
+				} else if overPolicy == "burst" {
+					data[prefix+".bursting"] = "true"
+				}
 			}
 			cm := &corev1.ConfigMap{ObjectMeta: v1.ObjectMeta{Name: "carbonkube-tenant-state"}, Data: data}
 			_, _ = b.Client.CoreV1().ConfigMaps(namespace).Update(ctx, cm, v1.UpdateOptions{})
 			_, _ = b.Client.CoreV1().ConfigMaps(namespace).Create(ctx, cm, v1.CreateOptions{})
+			jobs, _ := b.Dyn.Resource(schema.GroupVersionResource{Group: "carbonkube.io", Version: "v1", Resource: "carbonjobs"}).Namespace(namespace).List(ctx, v1.ListOptions{})
+			for i := range jobs.Items {
+				j := jobs.Items[i]
+				jspec, _ := j.UnstructuredContent()["spec"].(map[string]interface{})
+				polRef := safeString(jspec["policyRef"])
+				var perJob int
+				for k := range pols.Items {
+					pn := pols.Items[k].GetName()
+					if pn == polRef {
+						sp, _ := pols.Items[k].UnstructuredContent()["spec"].(map[string]interface{})
+						bd, _ := sp["budget"].(map[string]interface{})
+						perJob = safeInt(bd["perJobBudgetKg"])
+						break
+					}
+				}
+				if perJob > 0 {
+					ns := j.GetNamespace()
+					pods, _ := b.Client.CoreV1().Pods(ns).List(ctx, v1.ListOptions{})
+					tot := 0.0
+					for _, p := range pods.Items {
+						if p.Labels["app"] == safeString(jspec["dagId"]) {
+							ci := b.queryCarbonIntensity(p.Labels["preferredRegion"])
+							joules := b.queryPodJoules(ns, p.Name)
+							tot += (joules / 3600000.0) * ci / 1000.0
+						}
+					}
+					if int(tot) > perJob {
+						if md, ok := j.UnstructuredContent()["metadata"].(map[string]interface{}); ok {
+							ann := map[string]interface{}{}
+							if a, ok := md["annotations"].(map[string]interface{}); ok {
+								ann = a
+							}
+							ann["carbonkube.io/per-job-budget-exceeded"] = "true"
+							md["annotations"] = ann
+							j.Object["metadata"] = md
+							_, _ = b.Dyn.Resource(schema.GroupVersionResource{Group: "carbonkube.io", Version: "v1", Resource: "carbonjobs"}).Namespace(ns).Update(ctx, &j, v1.UpdateOptions{})
+						}
+					}
+				}
+			}
 		}
 	}
 }
