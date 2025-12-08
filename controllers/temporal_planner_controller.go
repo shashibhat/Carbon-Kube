@@ -11,6 +11,7 @@ import (
     "k8s.io/apimachinery/pkg/watch"
     "k8s.io/client-go/dynamic"
     "k8s.io/client-go/rest"
+    "k8s.io/klog/v2"
     "github.com/shashibhat/Carbon-Kube/pkg/providers"
 )
 
@@ -29,59 +30,78 @@ func NewTemporalPlanner(cfg *rest.Config) (*TemporalPlanner, error) {
 }
 
 func (t *TemporalPlanner) Start(ctx context.Context, namespace string) error {
-    w, err := t.Dyn.Resource(tpJobGVR).Namespace(namespace).Watch(ctx, v1.ListOptions{})
-    if err != nil {
-        return err
-    }
-    ch := w.ResultChan()
+    backoff := time.Second
     for {
-        select {
-        case <-ctx.Done():
-            return ctx.Err()
-        case e, ok := <-ch:
-            if !ok {
-                return nil
+        w, err := t.Dyn.Resource(tpJobGVR).Namespace(namespace).Watch(ctx, v1.ListOptions{})
+        if err != nil {
+            klog.Errorf("TemporalPlanner watch error: %v", err)
+            select {
+            case <-time.After(backoff):
+                backoff = time.Duration(minInt64(int64(backoff*2), int64(30*time.Second)))
+                continue
+            case <-ctx.Done():
+                return ctx.Err()
             }
-            if e.Type == watch.Added || e.Type == watch.Modified {
-                u := e.Object.DeepCopyObject().(*unstructured.Unstructured)
-                spec := u.UnstructuredContent()["spec"].(map[string]interface{})
-                ns := u.GetNamespace()
-                t0 := time.Now().UTC()
-                T := seconds(spec["estimatedRuntimeSeconds"]) * time.Second
-                deadline := parseDeadline(spec["deadline"], t0, spec)
-                policyAgg := 1.0
-                if v, ok := u.GetAnnotations()["carbonkube.io/carbon-aggressiveness"]; ok {
-                    policyAgg = parseFloat(v)
+        }
+        ch := w.ResultChan()
+        for {
+            select {
+            case <-ctx.Done():
+                return ctx.Err()
+            case e, ok := <-ch:
+                if !ok {
+                    klog.Warning("TemporalPlanner watch channel closed; restarting")
+                    time.Sleep(backoff)
+                    break
                 }
-                critical := false
-                if v, ok := u.GetAnnotations()["carbonkube.io/criticality"]; ok {
-                    critical = v == "Critical"
-                }
-                asap := t0
-                dMax := seconds(spec["maxDelaySeconds"]) * time.Second
-                sMax := seconds(spec["maxSlowdownPercent"]) // interpreted as percent
-                tMin := t0
-                tMax := minTime(t0.Add(dMax), deadline.Add(-T), asap.Add(time.Duration(sMax)*T/100))
-                final := asap
-                if !critical && tMax.After(tMin) {
-                    slot := 15 * time.Minute
-                    region := firstRegion(spec)
-                    fp := selectProvider()
-                    points, errF := fp.Forecast(region, tMin, tMax.Add(T), slot)
-                    if errF == nil && len(points) > 0 {
-                        tCarbon := argminCarbonSeries(tMin, tMax, slot, T, points)
-                        final = clampTime(asap.Add(time.Duration(policyAgg)*tCarbon.Sub(asap)), tMin, tMax)
+                if e.Type == watch.Added || e.Type == watch.Modified {
+                    u := e.Object.DeepCopyObject().(*unstructured.Unstructured)
+                    spec := u.UnstructuredContent()["spec"].(map[string]interface{})
+                    anns := map[string]string{}
+                    if md, ok := u.UnstructuredContent()["metadata"].(map[string]interface{}); ok {
+                        if a, ok := md["annotations"].(map[string]interface{}); ok {
+                            for k, v := range a { if s, ok := v.(string); ok { anns[k] = s } }
+                        }
+                    }
+                    ns := u.GetNamespace()
+                    t0 := time.Now().UTC()
+                    T := seconds(spec["estimatedRuntimeSeconds"]) * time.Second
+                    deadline := parseDeadline(spec["deadline"], t0, anns)
+                    agg := clamp01(parseFloat(anns["carbonkube.io/carbon-aggressiveness"]))
+                    critical := anns["carbonkube.io/criticality"] == "Critical"
+                    asap := t0
+                    maxDelaySec := parseIntAnnotation(anns, "carbonkube.io/maxDelaySeconds", func() int { if critical { return 0 } ; return 0 })
+                    maxSlowdownPct := parseIntAnnotation(anns, "carbonkube.io/maxSlowdownPercent", func() int { return 0 })
+                    tDelay := t0.Add(time.Duration(maxDelaySec) * time.Second)
+                    tSlow := t0.Add(time.Duration(maxSlowdownPct) * T / 100)
+                    tMin, tMax := computeScheduleWindow(t0, T, tDelay, deadline, tSlow)
+                    final := asap
+                    if !critical && tMax.After(tMin) {
+                        slot := 15 * time.Minute
+                        region := firstRegion(spec)
+                        if region != "" {
+                            fp := selectProvider()
+                            points, errF := fp.Forecast(region, tMin, tMax.Add(T), slot)
+                            if errF == nil && len(points) > 0 {
+                                tCarbon := argminCarbonSeries(tMin, tMax, slot, T, points)
+                                final = clampTime(asap.Add(time.Duration(agg)*tCarbon.Sub(asap)), tMin, tMax)
+                            } else {
+                                klog.Warningf("TemporalPlanner forecast unavailable: err=%v len=%d", errF, len(points))
+                            }
+                        } else {
+                            klog.Warning("TemporalPlanner no region found; falling back to ASAP")
+                        }
+                    }
+                    if md, ok := u.UnstructuredContent()["metadata"].(map[string]interface{}); ok {
+                        a := map[string]interface{}{}
+                        if v, ok := md["annotations"].(map[string]interface{}); ok { a = v }
+                        a["carbonkube.io/scheduled-at"] = final.Format(time.RFC3339)
+                        md["annotations"] = a
+                    }
+                    if _, err := t.Dyn.Resource(tpJobGVR).Namespace(ns).Update(ctx, u, v1.UpdateOptions{}); err != nil {
+                        klog.Errorf("TemporalPlanner update failed: %v", err)
                     }
                 }
-                if md, ok := u.UnstructuredContent()["metadata"].(map[string]interface{}); ok {
-                    anns := map[string]interface{}{}
-                    if a, ok := md["annotations"].(map[string]interface{}); ok {
-                        anns = a
-                    }
-                    anns["carbonkube.io/scheduled-at"] = final.Format(time.RFC3339)
-                    md["annotations"] = anns
-                }
-                _, _ = t.Dyn.Resource(tpJobGVR).Namespace(ns).Update(ctx, u, v1.UpdateOptions{})
             }
         }
     }
@@ -100,18 +120,19 @@ func seconds(v interface{}) time.Duration {
     }
 }
 
-func parseDeadline(v interface{}, t0 time.Time, spec map[string]interface{}) time.Time {
+func parseDeadline(v interface{}, t0 time.Time, anns map[string]string) time.Time {
     if s, ok := v.(string); ok && s != "" {
         if tt, err := time.Parse(time.RFC3339, s); err == nil {
             return tt
         }
     }
-    if sla, ok := spec["sla"].(map[string]interface{}); ok {
-        if mode, ok := sla["deadlineMode"].(string); ok && mode == "Relative" {
-            if dr, ok := sla["defaultRelativeDeadlineSeconds"].(int64); ok {
-                return t0.Add(time.Duration(dr) * time.Second)
-            }
+    mode := anns["carbonkube.io/deadlineMode"]
+    if mode == "Relative" {
+        if drs := anns["carbonkube.io/defaultRelativeDeadlineSeconds"]; drs != "" {
+            if v, err := strconv.Atoi(drs); err == nil { return t0.Add(time.Duration(v) * time.Second) }
         }
+    } else if mode == "Absolute" {
+        return t0.Add(24 * time.Hour)
     }
     return t0.Add(24 * time.Hour)
 }
@@ -144,18 +165,7 @@ func clampTime(x, lo, hi time.Time) time.Time {
     return x
 }
 
-func argminCarbon(asap, tMin, tMax time.Time, slot time.Duration, T time.Duration) time.Time {
-    best := tMin
-    bestC := 1e9
-    for t := tMin; !t.After(tMax); t = t.Add(slot) {
-        c := carbonCostSeries(t, T, slot, []providers.ForecastPoint{})
-        if c < bestC {
-            best = t
-            bestC = c
-        }
-    }
-    return best
-}
+// argminCarbonSeries selects the start time within [tMin,tMax] that minimizes carbon cost.
 
 func argminCarbonSeries(tMin time.Time, tMax time.Time, slot time.Duration, T time.Duration, points []providers.ForecastPoint) time.Time {
     best := tMin
@@ -221,3 +231,28 @@ func selectProvider() providers.ForecastProvider {
     token := os.Getenv("CARBONKUBE_ELECTRICITYMAPS_TOKEN")
     return providers.NewElectricityMapsProvider(base, token)
 }
+
+// Helpers for tests and clarity
+func parseIntAnnotation(anns map[string]string, key string, def func() int) int {
+    s := anns[key]
+    if s == "" { return def() }
+    v, err := strconv.Atoi(s)
+    if err != nil { return def() }
+    return v
+}
+
+func clamp01(f float64) float64 { if f < 0 { return 0 } ; if f > 1 { return 1 } ; return f }
+
+func computeScheduleWindow(t0 time.Time, T time.Duration, tDelay time.Time, deadline time.Time, tSlow time.Time) (time.Time, time.Time) {
+    tMin := t0
+    tMax := minTime(tDelay, deadline.Add(-T), tSlow)
+    return tMin, tMax
+}
+
+func computeFinalStartTime(asap time.Time, tMin time.Time, tMax time.Time, slot time.Duration, T time.Duration, points []providers.ForecastPoint, agg float64, critical bool) time.Time {
+    if critical || !tMax.After(tMin) || len(points) == 0 { return asap }
+    tCarbon := argminCarbonSeries(tMin, tMax, slot, T, points)
+    return clampTime(asap.Add(time.Duration(clamp01(agg))*tCarbon.Sub(asap)), tMin, tMax)
+}
+
+func minInt64(a, b int64) int64 { if a < b { return a } ; return b }
