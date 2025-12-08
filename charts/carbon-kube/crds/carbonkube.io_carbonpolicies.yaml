@@ -59,6 +59,7 @@ spec:
                       type: integer
                     maxSlowdownPercent:
                       type: integer
+                      description: "Maximum allowed slowdown vs ASAP completion, in percent"
                     deadlineMode:
                       type: string
                       enum:
@@ -66,6 +67,7 @@ spec:
                         - Absolute
                     defaultRelativeDeadlineSeconds:
                       type: integer
+                      description: "Relative deadline (seconds from submission) used when jobs do not provide an explicit absolute deadline"
                 carbon:
                   type: object
                   properties:
@@ -73,6 +75,7 @@ spec:
                       type: number
                       minimum: 0
                       maximum: 1
+                      description: "Interpolation factor [0,1] towards carbon-optimal start time; 0=ASAP, 1=carbon-optimal"
                     maxCarbonIntensity:
                       type: integer
                     minRenewableFraction:

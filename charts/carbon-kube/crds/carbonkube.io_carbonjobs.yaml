@@ -51,8 +51,10 @@ spec:
                 deadline:
                   type: string
                   format: date-time
+                  description: "Optional absolute RFC3339 deadline; if omitted, planner uses policy-driven relative deadlines"
                 dataSources:
                   type: array
+                  description: "External data dependencies for data gravity: each entry describes source type, resource identifier and region, with optional average GB ingress/read per job"
                   items:
                     type: object
                     properties:

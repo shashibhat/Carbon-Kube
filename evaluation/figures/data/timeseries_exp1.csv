@@ -1,0 +1,6 @@
+timestamp,zone,carbon_intensity_g_per_kwh,migrations,co2_saved_kg_cumulative
+2025-12-03T00:00:00Z,US-WECC,72,0,0.00
+2025-12-03T00:30:00Z,US-WECC,68,1,0.01
+2025-12-03T01:00:00Z,US-WECC,65,1,0.02
+2025-12-03T01:30:00Z,US-CAL-CISO,110,0,0.03
+2025-12-03T02:00:00Z,US-WECC,63,1,0.04

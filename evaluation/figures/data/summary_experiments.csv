@@ -1,0 +1,4 @@
+experiment,duration_hours,co2_saved_kg,percent_saved,latency_increase_pct,cost_savings_pct
+exp1,2,0.04,41,1.1,3.2
+exp2,8,0.16,41,1.3,4.8
+exp3,24,0.48,41,1.7,6.5
