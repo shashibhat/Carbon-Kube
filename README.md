@@ -52,7 +52,7 @@ Carbon-Kube exists to fix those blind spots in a Kubernetes-native way.
 - **Controllers**
   - PolicyResolver: resolves `CarbonPolicy` via selectors, annotates jobs with policy context.
   - DAGController: computes topological depth, critical path, and `normalizedImportance`; annotates jobs.
-  - TemporalPlanner: uses real carbon forecasts (Prometheus/Electricity Maps) to choose `scheduled-at` within SLA.
+  - TemporalPlanner: uses real carbon forecasts  to choose `scheduled-at` within SLA.
   - BudgetEnforcer: aggregates measured energy→CO₂ per tenant from Kepler via Prometheus; updates tenant state.
 - **Scheduler Plugin**: combines emissions with DAG importance, budget penalties, data movement cost, and perf-per-watt; Critical workloads bypass carbon shifting.
 - **Webhook**: injects placement and policy context annotations and labels used by the plugin.
@@ -150,21 +150,22 @@ High-level flow:
 6. **Scheduling**: Plugin scores using emissions, DAG importance, budgets, and data gravity; webhook injects hints.
 
 ```mermaid
-graph TD
-    F[Forecast Provider\n(Prometheus/ElectricityMaps)] --> TP[Temporal Planner]
+flowchart TD
+    FP[Forecast Provider<br/>Prometheus / ElectricityMaps] --> TP[Temporal Planner]
     CP[CarbonPolicy] --> PR[Policy Resolver]
     CJ[CarbonJobSpec] --> DG[DAG Controller]
-    PR --> A1[Job Annotations]
-    DG --> A2[Job Annotations]
-    TP --> A3[Job Annotations]
-    A1 --> WH[Mutating Webhook]
+    PR --> A1[Policy Annotations]
+    DG --> A2[DAG Annotations]
+    TP --> A3[Temporal Annotations]
+    A1 --> WH[Scheduler Webhook]
     A2 --> WH
     A3 --> WH
-    WH --> S[Kube Scheduler + Plugin]
-    S --> P[Placement]
-    K[Kepler Metrics] --> BE[Budget Enforcer]
-    BE --> CM[ConfigMap\nTenant State]
-    CM --> S
+    WH --> SP[Scheduler Plugin]
+    SP --> NP[Node Placement]
+    KPLR[Kepler Energy Metrics] --> BE[Budget Enforcer]
+    BE --> CM[carbonkube-tenant-state]
+    CM --> SP
+
 ```
 
 
