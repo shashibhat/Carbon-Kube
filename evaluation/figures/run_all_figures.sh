@@ -8,5 +8,5 @@ python3 evaluation/figures/plot_timeseries_migrations.py evaluation/figures/data
 python3 evaluation/figures/plot_heatmap_scores.py
 python3 evaluation/figures/plot_boxplots_metrics.py
 python3 evaluation/figures/plot_rl_stacked_area.py
-python3 evaluation/figures/plot_sankey_energy.py
+python3 evaluation/figures/plot_energy_carbon_breakdown.py
 echo "Figures written to evaluation/figures/out"

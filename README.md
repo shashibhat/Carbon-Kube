@@ -344,7 +344,7 @@ The SparkApplication requests:
 - `spark-operator-spark` service account
 - `cluster` mode
 
-For the purposes of the paper, we repeat the job multiple times over a **2‑hour** interval for each regime (baseline and carbon‑aware).
+For the purposes of the paper, we run three durations under identical policy envelopes: **2 h (exp1)**, **8 h (exp2)**, and **24 h (exp3)**, comparing baseline vs carbon‑aware.
 
 ## Metrics and Instrumentation
 
@@ -386,54 +386,25 @@ To contextualize the results, we snapshot cluster state at the end of each 2‑h
   kubectl get nodes -o wide > results/exp1_carbon_nodes.txt
   ```
 
-- **CarbonScore CRD snapshot:**
+- **Pod status snapshots at migration timestamps:**
 
   ```bash
-  kubectl get carbonscores -o yaml > results/exp1_baseline_carbonscores.yaml
-  kubectl get carbonscores -o yaml > results/exp1_carbon_carbonscores.yaml
+  cat evaluation/results/pod_status.csv
   ```
 
 ## Experimental Procedure
 
-We automate experiments with a script derived from `scripts/run_experiment.sh`. Each experiment consists of two phases:
+We automate experiments using `evaluation/run_all.sh` and `evaluation/run_experiment.sh`.
 
-1. **Baseline run (Carbon‑Kube disabled)**
-2. **Carbon‑aware run (Carbon‑Kube enabled)**
+1. **Baseline**: default scheduler (controllers disabled).
+2. **Carbon‑aware**: controllers + scheduler plugin enabled.
 
-Each phase lasts **2 hours** and runs the same Spark workload.
+Run durations: **2 h (exp1)**, **8 h (exp2)**, **24 h (exp3)**; each run exports Prometheus snapshots, time‑series CSVs, and pod status snapshots.
 
-###  Baseline Run
-
-1. **Deploy Carbon‑Kube with mutator and tainting disabled (poller still enabled):**
-
-   ```bash
-   helm upgrade carbon-kube ../deploy/helm      --install      --namespace default      --set mutator.enabled=false      --set taintController.enabled=false      --set poller.enabled=true      --set poller.electricityMaps.secretName=electricitymaps      --set poller.electricityMaps.secretKey=auth-token      --set poller.electricityMaps.baseUrl=https://api.electricitymap.org/v3      --set poller.electricityMaps.zones='{US-WECC,US-CAL-CISO}'      --set image.repository="602695720187.dkr.ecr.us-west-2.amazonaws.com/carbon-kube"      --set image.tag="latest"
-   ```
-
-2. **Warm‑up and run workload for 2 hours:** repeatedly submit SparkPi jobs at a fixed interval (e.g., every 10 minutes).
-3. **Record metrics at the end of the 2‑hour window:**
-
-   ```bash
-   curl -s "${PROM_URL}/api/v1/query?query=co2_saved_kg_total"      > results/exp1_baseline_co2.json
-
-   curl -s "${PROM_URL}/api/v1/query?query=migrations_total"      > results/exp1_baseline_migrations.json
-
-   curl -s "${PROM_URL}/api/v1/query?query=latency_increase_percent"      > results/exp1_baseline_latency.json
-   ```
-
-4. **Capture cluster state and carbon scores** (pods, nodes, carbonscores).
-
-###  Carbon‑Aware Run
-
-1. **Enable Carbon‑Kube mutator and taint controller:**
-
-   ```bash
-   helm upgrade carbon-kube ../deploy/helm      --install      --namespace default      --set mutator.enabled=true      --set taintController.enabled=true      --set poller.enabled=true      --set poller.electricityMaps.secretName=electricitymaps      --set poller.electricityMaps.secretKey=auth-token      --set poller.electricityMaps.baseUrl=https://api.electricitymap.org/v3      --set poller.electricityMaps.zones='{US-WECC,US-CAL-CISO}'      --set image.repository="602695720187.dkr.ecr.us-west-2.amazonaws.com/carbon-kube"      --set image.tag="latest"
-   ```
-
-2. **Allow time for taints and node scores to propagate** (e.g., 10–15 minutes).  
-3. **Run the same SparkPi workload pattern for 2 hours.**
-4. **Collect metrics and cluster state** into `results/exp1_carbon_*.json|txt|yaml` using the same commands as the baseline run.
+```bash
+./evaluation/run_all.sh baseline
+./evaluation/run_all.sh carbonkube_full
+```
 
 ---
 
@@ -467,12 +438,38 @@ Savings are computed via Kepler joules multiplied by zone intensity (`carbon_int
 
 ## Figures
 
-- Multi‑objective scatter with Pareto front: `evaluation/figures/out/scatter_pareto.png` (latency % vs CO₂ %; cost savings as color)
-- Time‑series intensity, migrations, cumulative CO₂: `evaluation/figures/out/timeseries_migrations.png`
-- Regional heatmap of scores and penalties: `evaluation/figures/out/heatmap_scores.png`
-- Box plots across workload types and phases: `evaluation/figures/out/boxplots_metrics.png`
-- RL reward decomposition: `evaluation/figures/out/rl_stacked_area.png`
-- Sankey energy flow and carbon attribution: `evaluation/figures/out/sankey_energy.png`
+<table>
+  <tr>
+    <td align="center">
+      <img src="evaluation/figures/out/scatter_pareto.png" width="300"><br>
+      <sub><b>Scatter: Pareto Front (Latency vs CO₂)</b></sub>
+    </td>
+    <td align="center">
+      <img src="evaluation/figures/out/timeseries_migrations.png" width="300"><br>
+      <sub><b>Time-Series: Intensity, Migrations, CO₂</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="evaluation/figures/out/heatmap_scores.png" width="300"><br>
+      <sub><b>Heatmap: Regional Scores & Penalties</b></sub>
+    </td>
+    <td align="center">
+      <img src="evaluation/figures/out/boxplots_metrics.png" width="300"><br>
+      <sub><b>Box Plots: Workload Performance</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="evaluation/figures/out/rl_stacked_area.png" width="300"><br>
+      <sub><b>RL: Reward Decomposition</b></sub>
+    </td>
+    <td align="center">
+      <img src="evaluation/figures/out/energy_carbon_breakdown.png" width="300"><br>
+      <sub><b>Stacked Area: Energy Flow & Carbon Attribution</b></sub>  
+    </td>
+  </tr>
+</table>
 
 ## Data Artifacts
 
