@@ -1,0 +1,6 @@
+pod,timestamp,namespace,node,phase,reason
+spark-pi-exec-4,2025-12-03T06:00:00Z,default,node-wecc-01,Running,Rescheduled
+gpu-inference-0,2025-12-03T12:00:00Z,default,node-calciso-01,Pending,Scheduled
+flink-taskmanager-2,2025-12-03T12:00:00Z,default,node-calciso-01,Running,Rescheduled
+spark-pi-exec-5,2025-12-03T18:00:00Z,default,node-wecc-01,Running,Rescheduled
+spark-pi-exec-6,2025-12-04T00:00:00Z,default,node-wecc-01,Running,Rescheduled

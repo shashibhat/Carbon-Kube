@@ -1,0 +1,5 @@
+workload,US-WECC,US-CAL-CISO,US-EAST-1,latency_penalty_ms,egress_penalty_gb
+sparkpi,86,72,78,15,2.4
+cpu-batch,81,68,75,25,5.1
+gpu-inference,88,70,82,10,1.6
+pb-etl,79,65,73,40,12.3

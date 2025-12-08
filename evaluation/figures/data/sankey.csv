@@ -1,0 +1,8 @@
+source,target,value_kwh,gco2_per_kwh
+grid_renewables,cluster_workloads,12.5,40
+grid_fossil,cluster_workloads,8.0,550
+cluster_workloads,spark_driver,3.2,120
+cluster_workloads,spark_executors,9.8,120
+cluster_workloads,flink_taskmanagers,5.1,160
+cluster_workloads,gpu_inference,3.4,200
+carbon_kube_savings,avoided_emissions,0.72,0

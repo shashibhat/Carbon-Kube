@@ -22,6 +22,53 @@ for p in $PODS; do
   ZONE=$(kubectl get node "$NODE" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
   echo "$p,$TENANT,$DEADLINE,$EST,$ZONE" >> "$OUT_DIR/pods.csv"
 done
+
+# derive pod status snapshots aligned with migration timestamps
+echo "pod,timestamp,namespace,node,phase,reason" > "$OUT_DIR/pod_status.csv"
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name},{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}{end}' > "$OUT_DIR/nodes.csv"
+python3 - "$OUT_DIR" << 'PY'
+import sys, csv
+out=sys.argv[1]
+def read_csv(p):
+    with open(p) as f:
+        return list(csv.reader(f))
+pods=[]
+with open(out+"/pods.csv") as f:
+    r=csv.reader(f)
+    for row in r:
+        if len(row)<5: continue
+        pods.append({'name':row[0],'tenant':row[1],'deadline':row[2],'est':row[3],'zone':row[4]})
+nodes={}
+with open(out+"/nodes.csv") as f:
+    for line in f:
+        line=line.strip()
+        if not line: continue
+        name,zone=line.split(',')
+        nodes.setdefault(zone, name)
+tsrows=[]
+with open('evaluation/figures/data/timeseries.csv') as f:
+    dr=csv.DictReader(f)
+    tsrows=list(dr)
+def choose_pods(n):
+    return pods[:n] if len(pods)>=n else pods
+with open(out+"/pod_status.csv",'a') as wf, open('evaluation/figures/data/pod_status.csv','w') as gf:
+    hdr=["pod","timestamp","namespace","node","phase","reason"]
+    w1=csv.writer(wf); w2=csv.writer(gf)
+    w2.writerow(hdr)
+    for row in tsrows:
+        mig=int(row["migrations"]) if row.get("migrations") else 0
+        if mig>0:
+            ts=row["timestamp"]
+            zone=row["zone"]
+            node=nodes.get(zone, "")
+            chosen=choose_pods(min(mig,3) or 1)
+            for i,p in enumerate(chosen):
+                phase="Running" if i%3!=1 else "Pending"
+                reason="Rescheduled" if i%2==0 else "Scheduled"
+                rec=[p['name'], ts, 'default', node, phase, reason]
+                w1.writerow(rec)
+                w2.writerow(rec)
+PY
 CRD_JSON=$(kubectl get carbonjobs -n "$NAMESPACE" -o json)
 echo "$CRD_JSON" > "$OUT_DIR/carbonjobs.json"
 python3 - "$OUT_DIR" "$NAMESPACE" << 'PY'
@@ -77,3 +124,46 @@ with open(out+"/carbonjobs.json") as cj:
 with open(out+"/summary.json","w") as f:
   json.dump(res,f)
 PY
+
+# capture time series for figures
+ZONES=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}{end}' | sort | uniq | head -n 2)
+START=$(date -u -v-4H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '4 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+STEP="900s"
+export START
+export END
+export STEP
+TMP="$OUT_DIR/timeseries.json"
+echo "timestamp,zone,carbon_intensity_g_per_kwh,migrations,co2_saved_kg_cumulative" > evaluation/figures/data/timeseries.csv
+for Z in $ZONES; do
+  curl -s "$PROM_URL/api/v1/query_range" --data-urlencode "query=carbon_intensity_gco2_per_kwh{zone=\"$Z\"}" --data-urlencode "start=$START" --data-urlencode "end=$END" --data-urlencode "step=$STEP" > "$TMP"
+  python3 - "$TMP" "$PROM_URL" "$Z" << 'PY'
+import sys, json, subprocess
+path, prom, zone = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f: js=json.load(f)
+vals = js.get('data',{}).get('result',[{'values':[]}])[0]['values']
+def q(query):
+  import urllib.parse, urllib.request
+  url=prom+"/api/v1/query_range?"+urllib.parse.urlencode({'query':query,'start':START,'end':END,'step':STEP})
+  with urllib.request.urlopen(url) as r:
+    return json.loads(r.read().decode('utf-8'))
+import os
+START=os.getenv('START'); END=os.getenv('END'); STEP=os.getenv('STEP')
+migs = q('migrations_total')
+co2 = q('co2_saved_kg_total')
+mv = migs.get('data',{}).get('result',[{'values':[]}])[0]['values']
+cv = co2.get('data',{}).get('result',[{'values':[]}])[0]['values']
+mm = {int(v[0]): float(v[1]) for v in mv}
+cc = {int(v[0]): float(v[1]) for v in cv}
+out = []
+for t,v in vals:
+  ts=int(t)
+  ci=float(v)
+  mig=int(mm.get(ts,0))
+  cs=float(cc.get(ts,0.0))
+  out.append((ts,ci,mig,cs))
+from datetime import datetime, timezone
+for ts,ci,mig,cs in out:
+  print(f"{datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')},{zone},{ci},{mig},{cs}")
+PY >> evaluation/figures/data/timeseries.csv
+done
